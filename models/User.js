@@ -16,6 +16,7 @@ const RestaurantUserSchema = new mongoose.Schema(
     restaurantLocation: { type: mongoose.Schema.Types.Mixed, default: '' },
     commission: { type: mongoose.Schema.Types.Mixed, default: 0 },
     isActive: { type: Boolean, default: true },
+    fcmToken: { type: String, default: '' },
   },
   {
     timestamps: true,

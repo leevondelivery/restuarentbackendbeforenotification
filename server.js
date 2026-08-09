@@ -1343,6 +1343,139 @@ app.get('/api/payments', async (req, res) => {
   }
 });
 
+// ==========================================
+// FIREBASE CLOUD MESSAGING (FCM) INTEGRATION
+// ==========================================
+let firebaseAdmin = null;
+try {
+  const admin = require('firebase-admin');
+  const fs = require('fs');
+  const path = require('path');
+  const serviceAccountPath = path.join(__dirname, 'firebase-service-account.json');
+
+  if (fs.existsSync(serviceAccountPath)) {
+    admin.initializeApp({
+      credential: admin.credential.cert(require(serviceAccountPath)),
+    });
+    firebaseAdmin = admin;
+    console.log('Successfully initialized Firebase Admin SDK from firebase-service-account.json');
+  } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    admin.initializeApp({
+      credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
+    });
+    firebaseAdmin = admin;
+    console.log('Successfully initialized Firebase Admin SDK from process.env.FIREBASE_SERVICE_ACCOUNT');
+  } else {
+    console.log('Notice: firebase-service-account.json not found in backend directory. FCM notifications will log locally.');
+  }
+} catch (e) {
+  console.warn('Firebase Admin SDK setup notice:', e.message);
+}
+
+// POST /api/restaurant/fcm-token — Save or Update FCM Device Token for a Restaurant User
+app.post('/api/restaurant/fcm-token', async (req, res) => {
+  try {
+    const { restaurantId, restId, fcmToken } = req.body;
+    const targetRestId = String(restaurantId || restId || '').trim();
+
+    console.log(`Received FCM token registration for restaurantId "${targetRestId}": ${fcmToken}`);
+
+    if (!targetRestId || !fcmToken) {
+      return res.status(400).json({ success: false, error: 'restaurantId and fcmToken are required' });
+    }
+
+    const numId = !isNaN(targetRestId) ? Number(targetRestId) : null;
+
+    const result = await RestaurantUser.updateMany(
+      {
+        $or: [
+          { restId: targetRestId },
+          { restId: String(targetRestId) },
+          { _id: mongoose.Types.ObjectId.isValid(targetRestId) ? new mongoose.Types.ObjectId(targetRestId) : null },
+          ...(numId !== null ? [{ restId: numId }] : []),
+        ],
+      },
+      { $set: { fcmToken } }
+    );
+
+    console.log(`Updated FCM token in restuarentusers collection (${result.modifiedCount || result.matchedCount} matched)`);
+
+    res.json({ success: true, message: 'FCM token registered successfully', fcmToken });
+  } catch (err) {
+    console.error('Error saving FCM token:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Helper function: Send high-priority FCM notification to restaurant device with order details and total amount
+async function sendFCMOrderNotification(targetRestId, orderData) {
+  try {
+    const numId = !isNaN(targetRestId) ? Number(targetRestId) : null;
+    const userDoc = await RestaurantUser.findOne({
+      $or: [
+        { restId: String(targetRestId) },
+        { _id: mongoose.Types.ObjectId.isValid(targetRestId) ? new mongoose.Types.ObjectId(targetRestId) : null },
+        ...(numId !== null ? [{ restId: numId }] : []),
+      ],
+    });
+
+    const fcmToken = userDoc?.fcmToken;
+    const orderId = orderData.orderId || orderData._id || 'NEW';
+    const amount = orderData.grandTotal || orderData.totalPrice || orderData.amount || '0';
+
+    console.log(`Triggering FCM notification for Order #${orderId} (₹${amount}) to restaurantId "${targetRestId}", Token: "${fcmToken || 'NONE'}"`);
+
+    if (fcmToken && firebaseAdmin) {
+      const message = {
+        token: fcmToken,
+        notification: {
+          title: '🚨 NEW ORDER RECEIVED!',
+          body: `Order #${orderId} - Total Amount: ₹${amount}`,
+        },
+        android: {
+          priority: 'high',
+          notification: {
+            sound: 'ordernotification',
+            channelId: 'order_incoming_channel_v1',
+            priority: 'max',
+            defaultSound: false,
+          },
+        },
+        data: {
+          orderId: String(orderId),
+          totalPrice: String(amount),
+          grandTotal: String(amount),
+        },
+      };
+
+      const response = await firebaseAdmin.messaging().send(message);
+      console.log('Firebase FCM Push Notification Sent Successfully:', response);
+      return { success: true, response };
+    }
+  } catch (err) {
+    console.error('Error sending FCM notification:', err);
+  }
+  return { success: false };
+}
+
+// POST /api/orders/send-notification — Endpoint to manually or webhook trigger an order push notification
+app.post('/api/orders/send-notification', async (req, res) => {
+  try {
+    const { restaurantId, restId, orderData } = req.body;
+    const targetRestId = String(restaurantId || restId || orderData?.restaurantId || orderData?.restId || '').trim();
+
+    if (!targetRestId || !orderData) {
+      return res.status(400).json({ success: false, error: 'restaurantId and orderData are required' });
+    }
+
+    const result = await sendFCMOrderNotification(targetRestId, orderData);
+    res.json({ success: true, message: 'Notification payload processed', result });
+  } catch (err) {
+    console.error('Error in send-notification endpoint:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 
 
