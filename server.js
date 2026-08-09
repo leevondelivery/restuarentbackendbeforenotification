@@ -1368,54 +1368,84 @@ try {
   } else {
     console.log('Notice: firebase-service-account.json not found in backend directory. FCM notifications will log locally.');
   }
-} catch (e) {
-  console.warn('Firebase Admin SDK setup notice:', e.message);
 }
 
-// POST /api/restaurant/fcm-token — Save or Update FCM Device Token for a Restaurant User
+// POST /api/restaurant/fcm-token — Save or Update FCM Device Token for a specific Restaurant User
 app.post('/api/restaurant/fcm-token', async (req, res) => {
   try {
-    const { restaurantId, restId, fcmToken } = req.body;
-    const targetRestId = String(restaurantId || restId || '').trim();
+    const { restaurantId, restId, userId, phone, email, fcmToken } = req.body;
+    const targetRestId = String(restaurantId || restId || userId || phone || email || '').trim();
 
-    console.log(`Received FCM token registration for restaurantId "${targetRestId}": ${fcmToken}`);
+    console.log(`Received FCM token registration for targetRestId "${targetRestId}": ${fcmToken}`);
 
-    if (!targetRestId || !fcmToken) {
-      return res.status(400).json({ success: false, error: 'restaurantId and fcmToken are required' });
+    if (!fcmToken) {
+      return res.status(400).json({ success: false, error: 'fcmToken is required' });
     }
 
-    const numId = !isNaN(targetRestId) ? Number(targetRestId) : null;
+    const numId = targetRestId && !isNaN(targetRestId) ? Number(targetRestId) : null;
+    let queryConditions = [];
+
+    if (targetRestId) {
+      queryConditions.push({ restId: targetRestId });
+      queryConditions.push({ restId: String(targetRestId) });
+      queryConditions.push({ restaurantId: targetRestId });
+      queryConditions.push({ restaurantId: String(targetRestId) });
+      queryConditions.push({ restaurant_id: targetRestId });
+      if (mongoose.Types.ObjectId.isValid(targetRestId)) {
+        queryConditions.push({ _id: new mongoose.Types.ObjectId(targetRestId) });
+        queryConditions.push({ _id: targetRestId });
+      }
+      queryConditions.push({ phone: targetRestId });
+      queryConditions.push({ mobileNumber: targetRestId });
+      queryConditions.push({ email: targetRestId });
+      if (numId !== null) {
+        queryConditions.push({ restId: numId });
+        queryConditions.push({ restaurantId: numId });
+      }
+    }
+
+    if (userId) {
+      if (mongoose.Types.ObjectId.isValid(userId)) {
+        queryConditions.push({ _id: new mongoose.Types.ObjectId(userId) });
+      }
+      queryConditions.push({ _id: String(userId) });
+    }
+    if (phone) {
+      queryConditions.push({ phone: String(phone) });
+      queryConditions.push({ mobileNumber: String(phone) });
+    }
+    if (email) {
+      queryConditions.push({ email: String(email) });
+    }
 
     const result = await RestaurantUser.updateMany(
-      {
-        $or: [
-          { restId: targetRestId },
-          { restId: String(targetRestId) },
-          { _id: mongoose.Types.ObjectId.isValid(targetRestId) ? new mongoose.Types.ObjectId(targetRestId) : null },
-          ...(numId !== null ? [{ restId: numId }] : []),
-        ],
-      },
+      queryConditions.length > 0 ? { $or: queryConditions } : {},
       { $set: { fcmToken } }
     );
 
-    console.log(`Updated FCM token in restuarentusers collection (${result.modifiedCount || result.matchedCount} matched)`);
+    console.log(`Updated FCM token in restuarentusers collection for restaurantId "${targetRestId}": (${result.modifiedCount || result.matchedCount} matched)`);
 
-    res.json({ success: true, message: 'FCM token registered successfully', fcmToken });
+    res.json({ success: true, message: 'FCM token registered successfully for restaurant', fcmToken, matchedCount: result.matchedCount });
   } catch (err) {
     console.error('Error saving FCM token:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Helper function: Send high-priority FCM notification to restaurant device with order details and total amount
+// Helper function: Send high-priority FCM notification strictly to targeted restaurant device
 async function sendFCMOrderNotification(targetRestId, orderData) {
   try {
-    const numId = !isNaN(targetRestId) ? Number(targetRestId) : null;
+    const numId = targetRestId && !isNaN(targetRestId) ? Number(targetRestId) : null;
     const userDoc = await RestaurantUser.findOne({
       $or: [
         { restId: String(targetRestId) },
+        { restaurantId: String(targetRestId) },
+        { restaurant_id: String(targetRestId) },
         { _id: mongoose.Types.ObjectId.isValid(targetRestId) ? new mongoose.Types.ObjectId(targetRestId) : null },
-        ...(numId !== null ? [{ restId: numId }] : []),
+        { phone: String(targetRestId) },
+        { mobileNumber: String(targetRestId) },
+        { email: String(targetRestId) },
+        ...(numId !== null ? [{ restId: numId }, { restaurantId: numId }] : []),
       ],
     });
 
@@ -1423,7 +1453,7 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
     const orderId = orderData.orderId || orderData._id || 'NEW';
     const amount = orderData.grandTotal || orderData.totalPrice || orderData.amount || '0';
 
-    console.log(`Triggering FCM notification for Order #${orderId} (₹${amount}) to restaurantId "${targetRestId}", Token: "${fcmToken || 'NONE'}"`);
+    console.log(`Targeting FCM notification for Order #${orderId} (₹${amount}) strictly to restaurantId "${targetRestId}", Found Token: "${fcmToken ? 'YES' : 'NONE'}"`);
 
     if (fcmToken && firebaseAdmin) {
       const message = {
@@ -1445,12 +1475,15 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
           orderId: String(orderId),
           totalPrice: String(amount),
           grandTotal: String(amount),
+          restaurantId: String(targetRestId),
         },
       };
 
       const response = await firebaseAdmin.messaging().send(message);
-      console.log('Firebase FCM Push Notification Sent Successfully:', response);
+      console.log(`Firebase FCM Push Notification Sent Successfully to restaurantId "${targetRestId}":`, response);
       return { success: true, response };
+    } else {
+      console.warn(`No valid FCM token registered for restaurantId "${targetRestId}". Notification skipped to prevent cross-restaurant delivery.`);
     }
   } catch (err) {
     console.error('Error sending FCM notification:', err);
