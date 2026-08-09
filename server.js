@@ -1522,6 +1522,11 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
       ],
     });
 
+    if (userDoc && userDoc.isActive === false) {
+      console.log(`RestaurantId "${targetRestId}" is CLOSED (isActive: false). FCM push notification skipped.`);
+      return { success: false, message: 'Restaurant is closed' };
+    }
+
     const fcmToken = userDoc?.fcmToken;
     const orderId = orderData.orderId || orderData._id || 'NEW';
     const amount = orderData.grandTotal || orderData.totalPrice || orderData.amount || '0';
