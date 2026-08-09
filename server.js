@@ -1535,20 +1535,24 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
           title: '🔔 NEW ORDER RECEIVED!',
           body: `Order #${orderId} - Total Amount: ₹${amount}`,
         },
+        data: {
+          title: '🔔 NEW ORDER RECEIVED!',
+          body: `Order #${orderId} - Total Amount: ₹${amount}`,
+          orderId: String(orderId),
+          totalPrice: String(amount),
+          grandTotal: String(amount),
+          restaurantId: String(targetRestId),
+        },
         android: {
           priority: 'high',
+          ttl: 0,
           notification: {
             sound: 'ordernotification',
             channelId: 'order_incoming_channel_v1',
             priority: 'max',
             defaultSound: false,
+            visibility: 'public',
           },
-        },
-        data: {
-          orderId: String(orderId),
-          totalPrice: String(amount),
-          grandTotal: String(amount),
-          restaurantId: String(targetRestId),
         },
       };
 
