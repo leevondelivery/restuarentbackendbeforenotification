@@ -1548,7 +1548,7 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
           ttl: 0,
           notification: {
             sound: 'ordernotification',
-            channelId: 'order_incoming_channel_v1',
+            channelId: 'order_incoming_channel_v2',
             priority: 'max',
             defaultSound: false,
             visibility: 'public',
