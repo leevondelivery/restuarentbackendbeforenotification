@@ -1368,6 +1368,8 @@ try {
   } else {
     console.log('Notice: firebase-service-account.json not found in backend directory. FCM notifications will log locally.');
   }
+} catch (e) {
+  console.warn('Firebase Admin SDK setup notice:', e.message);
 }
 
 // POST /api/restaurant/fcm-token — Save or Update FCM Device Token for a specific Restaurant User
