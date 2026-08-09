@@ -847,6 +847,17 @@ const handleLogin = async (req, res) => {
       commission: user.commission || 0,
     };
 
+    // Save fcmToken directly if passed during login request
+    if (req.body.fcmToken) {
+      try {
+        user.fcmToken = req.body.fcmToken;
+        await user.save();
+        console.log(`Saved FCM token during login for user "${user.name || inputPhone}"`);
+      } catch (fcmErr) {
+        console.warn('Notice saving FCM token during login:', fcmErr.message);
+      }
+    }
+
     console.log(`Login SUCCESS for: "${inputPhone}" (${user.name})`);
 
     return res.status(200).json({
@@ -1420,14 +1431,32 @@ app.post('/api/restaurant/fcm-token', async (req, res) => {
       queryConditions.push({ email: String(email) });
     }
 
-    const result = await RestaurantUser.updateMany(
-      queryConditions.length > 0 ? { $or: queryConditions } : {},
-      { $set: { fcmToken } }
-    );
+    const filter = queryConditions.length > 0 ? { $or: queryConditions } : {};
 
-    console.log(`Updated FCM token in restuarentusers collection for restaurantId "${targetRestId}": (${result.modifiedCount || result.matchedCount} matched)`);
+    const result = await RestaurantUser.updateMany(filter, { $set: { fcmToken } });
 
-    res.json({ success: true, message: 'FCM token registered successfully for restaurant', fcmToken, matchedCount: result.matchedCount });
+    const db = mongoose.connection.db;
+    let rawResult = null;
+    if (db) {
+      try {
+        rawResult = await db.collection('restuarentusers').updateMany(filter, { $set: { fcmToken } });
+      } catch (rawErr) {
+        console.warn('Raw MongoDB update notice:', rawErr.message);
+      }
+    }
+
+    const totalMatched = Math.max(result?.matchedCount || 0, rawResult?.matchedCount || 0);
+    const totalModified = Math.max(result?.modifiedCount || 0, rawResult?.modifiedCount || 0);
+
+    console.log(`Updated FCM token in restuarentusers collection for targetRestId "${targetRestId}": (${totalMatched} matched, ${totalModified} modified)`);
+
+    res.json({
+      success: true,
+      message: 'FCM token registered successfully for restaurant',
+      fcmToken,
+      matchedCount: totalMatched,
+      modifiedCount: totalModified,
+    });
   } catch (err) {
     console.error('Error saving FCM token:', err);
     res.status(500).json({ success: false, error: err.message });
