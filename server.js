@@ -1532,7 +1532,7 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
       const message = {
         token: fcmToken,
         notification: {
-          title: '🚨 NEW ORDER RECEIVED!',
+          title: '🔔 NEW ORDER RECEIVED!',
           body: `Order #${orderId} - Total Amount: ₹${amount}`,
         },
         android: {
