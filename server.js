@@ -38,22 +38,26 @@ app.get(['/api/orders/accepted', '/api/accepted-orders', '/api/orders/acceptedby
 
     console.log(`Fetch accepted orders request for restaurantId: "${targetRestId}"`);
 
-    let query = {};
-    if (targetRestId) {
-      const numId = !isNaN(targetRestId) ? Number(targetRestId) : -999999;
-      query = {
-        $or: [
-          { restaurantId: targetRestId },
-          { restaurantId: numId },
-          { restId: targetRestId },
-          { restId: numId },
-          { restaurant_id: targetRestId },
-          { restaurant_id: numId },
-          { 'restaurant.restId': targetRestId },
-          { 'restaurant.id': targetRestId },
-        ],
-      };
+    if (!targetRestId) {
+      console.log('No restaurantId provided — returning 0 orders.');
+      return res.json({ success: true, count: 0, orders: [] });
     }
+
+    const numId = !isNaN(targetRestId) ? Number(targetRestId) : -999999;
+    const query = {
+      $or: [
+        { restaurantId: targetRestId },
+        { restaurantId: numId },
+        { restId: targetRestId },
+        { restId: numId },
+        { restaurant_id: targetRestId },
+        { restaurant_id: numId },
+        { 'restaurant.restId': targetRestId },
+        { 'restaurant.id': targetRestId },
+        { 'restaurant._id': targetRestId },
+        { rest: targetRestId },
+      ],
+    };
 
     let orders = [];
     const db = mongoose.connection.db;
@@ -115,22 +119,26 @@ app.get(['/api/orders/incoming', '/api/orders/incomingorders', '/api/incoming-or
 
     console.log(`Fetch incoming orders request for restaurantId: "${targetRestId}"`);
 
-    let query = {};
-    if (targetRestId && targetRestId !== 'demo_rest_101') {
-      const numId = !isNaN(targetRestId) ? Number(targetRestId) : -999999;
-      query = {
-        $or: [
-          { restaurantId: targetRestId },
-          { restaurantId: numId },
-          { restId: targetRestId },
-          { restId: numId },
-          { restaurant_id: targetRestId },
-          { restaurant_id: numId },
-          { 'restaurant.restId': targetRestId },
-          { 'restaurant.id': targetRestId },
-        ],
-      };
+    if (!targetRestId) {
+      console.log('No restaurantId provided for incoming orders — returning 0 orders.');
+      return res.json({ success: true, count: 0, orders: [] });
     }
+
+    const numId = !isNaN(targetRestId) ? Number(targetRestId) : -999999;
+    const query = {
+      $or: [
+        { restaurantId: targetRestId },
+        { restaurantId: numId },
+        { restId: targetRestId },
+        { restId: numId },
+        { restaurant_id: targetRestId },
+        { restaurant_id: numId },
+        { 'restaurant.restId': targetRestId },
+        { 'restaurant.id': targetRestId },
+        { 'restaurant._id': targetRestId },
+        { rest: targetRestId },
+      ],
+    };
 
     let orders = [];
     const db = mongoose.connection.db;
@@ -155,6 +163,30 @@ app.get(['/api/orders/incoming', '/api/orders/incomingorders', '/api/incoming-or
     }
 
     console.log(`Found ${orders.length} orders from orders DB collection for restaurantId: "${targetRestId}"`);
+
+    // Auto-trigger FCM Push Notification for any incoming order not yet marked fcmSent
+    if (orders && orders.length > 0) {
+      orders.forEach(async (ord) => {
+        if (!ord.fcmSent) {
+          const ordId = ord._id || ord.orderId;
+          ord.fcmSent = true;
+          if (db && ordId) {
+            try {
+              await db.collection('orders').updateOne(
+                { $or: [{ _id: ordId }, { orderId: String(ordId) }] },
+                { $set: { fcmSent: true } }
+              );
+              await db.collection('incomingorders').updateOne(
+                { $or: [{ _id: ordId }, { orderId: String(ordId) }] },
+                { $set: { fcmSent: true } }
+              );
+            } catch (e) {}
+          }
+          console.log(`Auto-dispatching FCM push notification for incoming Order #${ordId} to restaurantId "${targetRestId}"`);
+          sendFCMOrderNotification(targetRestId, ord);
+        }
+      });
+    }
 
     res.json({ success: true, count: orders.length, orders, incomingOrders: orders });
   } catch (err) {
@@ -1365,14 +1397,24 @@ try {
   const serviceAccountPath = path.join(__dirname, 'firebase-service-account.json');
 
   if (fs.existsSync(serviceAccountPath)) {
+    const serviceAccount = require(serviceAccountPath);
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     admin.initializeApp({
-      credential: admin.credential.cert(require(serviceAccountPath)),
+      credential: admin.credential.cert(serviceAccount),
     });
     firebaseAdmin = admin;
     console.log('Successfully initialized Firebase Admin SDK from firebase-service-account.json');
   } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    let serviceAccount = typeof process.env.FIREBASE_SERVICE_ACCOUNT === 'string'
+      ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+      : process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     admin.initializeApp({
-      credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
+      credential: admin.credential.cert(serviceAccount),
     });
     firebaseAdmin = admin;
     console.log('Successfully initialized Firebase Admin SDK from process.env.FIREBASE_SERVICE_ACCOUNT');
