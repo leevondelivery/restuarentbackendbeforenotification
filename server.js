@@ -167,8 +167,9 @@ app.get(['/api/orders/incoming', '/api/orders/incomingorders', '/api/incoming-or
     // Auto-trigger FCM Push Notification for any incoming order not yet marked fcmSent
     if (orders && orders.length > 0) {
       orders.forEach(async (ord) => {
-        if (!ord.fcmSent) {
-          const ordId = ord._id || ord.orderId;
+        const ordId = ord._id || ord.orderId || 'UNKNOWN';
+        const isAlreadySent = ord.fcmSent === true || ord.fcmSent === 'true';
+        if (!isAlreadySent) {
           ord.fcmSent = true;
           if (db && ordId) {
             try {
@@ -182,8 +183,10 @@ app.get(['/api/orders/incoming', '/api/orders/incomingorders', '/api/incoming-or
               );
             } catch (e) {}
           }
-          console.log(`Auto-dispatching FCM push notification for incoming Order #${ordId} to restaurantId "${targetRestId}"`);
-          sendFCMOrderNotification(targetRestId, ord);
+          console.log(`[FCM Auto-Dispatch] Dispatching push notification for incoming Order #${ordId} to restaurantId "${targetRestId}"`);
+          await sendFCMOrderNotification(targetRestId, ord);
+        } else {
+          console.log(`[FCM Auto-Dispatch] Order #${ordId} for restaurantId "${targetRestId}" was already marked fcmSent: true`);
         }
       });
     }
@@ -1533,6 +1536,10 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
 
     console.log(`Targeting FCM notification for Order #${orderId} (₹${amount}) strictly to restaurantId "${targetRestId}", Found Token: "${fcmToken ? 'YES' : 'NONE'}"`);
 
+    if (!firebaseAdmin) {
+      console.warn(`[FCM Dispatch] firebaseAdmin SDK is NOT initialized. Cannot send push notification for Order #${orderId}. Check firebase-service-account.json or credentials.`);
+    }
+
     if (fcmToken && firebaseAdmin) {
       const message = {
         token: fcmToken,
@@ -1553,7 +1560,7 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
           ttl: 0,
           notification: {
             sound: 'ordernotification',
-            channelId: 'order_incoming_channel_v2',
+            channelId: 'order_incoming_channel_v3',
             priority: 'max',
             defaultSound: false,
             visibility: 'public',
@@ -1562,10 +1569,10 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
       };
 
       const response = await firebaseAdmin.messaging().send(message);
-      console.log(`Firebase FCM Push Notification Sent Successfully to restaurantId "${targetRestId}":`, response);
+      console.log(`[FCM Dispatch] Firebase FCM Push Notification Sent Successfully to restaurantId "${targetRestId}":`, response);
       return { success: true, response };
-    } else {
-      console.warn(`No valid FCM token registered for restaurantId "${targetRestId}". Notification skipped to prevent cross-restaurant delivery.`);
+    } else if (!fcmToken) {
+      console.warn(`[FCM Dispatch] No valid FCM token registered in DB for restaurantId "${targetRestId}". Notification skipped. App must register token via /api/restaurant/fcm-token.`);
     }
   } catch (err) {
     console.error('Error sending FCM notification:', err);
