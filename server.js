@@ -1456,13 +1456,13 @@ app.post('/api/restaurant/fcm-token', async (req, res) => {
 
     const filter = queryConditions.length > 0 ? { $or: queryConditions } : {};
 
-    const result = await RestaurantUser.updateMany(filter, { $set: { fcmToken, isActive: true } });
+    const result = await RestaurantUser.updateMany(filter, { $set: { fcmToken } });
 
     const db = mongoose.connection.db;
     let rawResult = null;
     if (db) {
       try {
-        rawResult = await db.collection('restuarentusers').updateMany(filter, { $set: { fcmToken, isActive: true } });
+        rawResult = await db.collection('restuarentusers').updateMany(filter, { $set: { fcmToken } });
       } catch (rawErr) {
         console.warn('Raw MongoDB update notice:', rawErr.message);
       }
@@ -1503,6 +1503,12 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
       ],
     });
 
+    // Skip notifications ONLY if restaurant partner explicitly switched toggle to OFFLINE
+    if (userDoc && (userDoc.isActive === false || userDoc.isOnline === false)) {
+      console.log(`RestaurantId "${targetRestId}" is toggled OFFLINE (isActive: false). FCM push notification skipped.`);
+      return { success: false, message: 'Restaurant is offline' };
+    }
+
     const fcmToken = userDoc?.fcmToken;
     const orderId = orderData.orderId || orderData._id || 'NEW';
     const amount = orderData.grandTotal || orderData.totalPrice || orderData.amount || '0';
@@ -1542,6 +1548,27 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
     }
   } catch (err) {
     console.error('Error sending FCM notification:', err);
+    if (
+      err?.errorInfo?.code === 'messaging/registration-token-not-registered' ||
+      err?.code === 'messaging/registration-token-not-registered' ||
+      String(err?.message || '').includes('NotRegistered')
+    ) {
+      console.warn(`[FCM Clean] Stale token detected for restaurantId "${targetRestId}". Clearing stale FCM token from DB so app re-registers fresh token.`);
+      try {
+        await RestaurantUser.updateMany(
+          {
+            $or: [
+              { restId: String(targetRestId) },
+              { restaurantId: String(targetRestId) },
+              { restaurant_id: String(targetRestId) },
+              { phone: String(targetRestId) },
+              { email: String(targetRestId) },
+            ],
+          },
+          { $set: { fcmToken: '' } }
+        );
+      } catch (cleanErr) {}
+    }
   }
   return { success: false };
 }
