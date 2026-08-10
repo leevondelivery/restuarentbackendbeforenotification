@@ -1503,6 +1503,12 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
       ],
     });
 
+    // Skip notifications ONLY if restaurant partner explicitly switched toggle to OFFLINE
+    if (userDoc && (userDoc.isActive === false || userDoc.isOnline === false)) {
+      console.log(`RestaurantId "${targetRestId}" is toggled OFFLINE (isActive: false). FCM push notification skipped.`);
+      return { success: false, message: 'Restaurant is offline' };
+    }
+
     const fcmToken = userDoc?.fcmToken;
     const orderId = orderData.orderId || orderData._id || 'NEW';
     const amount = orderData.grandTotal || orderData.totalPrice || orderData.amount || '0';
