@@ -1456,13 +1456,13 @@ app.post('/api/restaurant/fcm-token', async (req, res) => {
 
     const filter = queryConditions.length > 0 ? { $or: queryConditions } : {};
 
-    const result = await RestaurantUser.updateMany(filter, { $set: { fcmToken } });
+    const result = await RestaurantUser.updateMany(filter, { $set: { fcmToken, isActive: true } });
 
     const db = mongoose.connection.db;
     let rawResult = null;
     if (db) {
       try {
-        rawResult = await db.collection('restuarentusers').updateMany(filter, { $set: { fcmToken } });
+        rawResult = await db.collection('restuarentusers').updateMany(filter, { $set: { fcmToken, isActive: true } });
       } catch (rawErr) {
         console.warn('Raw MongoDB update notice:', rawErr.message);
       }
@@ -1502,12 +1502,6 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
         ...(numId !== null ? [{ restId: numId }, { restaurantId: numId }] : []),
       ],
     });
-
-    // Skip notifications ONLY if restaurant partner explicitly switched toggle to OFFLINE
-    if (userDoc && (userDoc.isActive === false || userDoc.isOnline === false)) {
-      console.log(`RestaurantId "${targetRestId}" is toggled OFFLINE (isActive: false). FCM push notification skipped.`);
-      return { success: false, message: 'Restaurant is offline' };
-    }
 
     const fcmToken = userDoc?.fcmToken;
     const orderId = orderData.orderId || orderData._id || 'NEW';
