@@ -1278,7 +1278,6 @@ app.post('/api/pendingpayments', async (req, res) => {
       amount: grandTotalNum,
       date: dateStr.split('T')[0],
       time: timeStr,
-      createdAt: new Date(dateStr),
       status: 'Pending Clearance',
     };
 
@@ -1299,12 +1298,18 @@ app.post('/api/pendingpayments', async (req, res) => {
         },
         $set: {
           restaurantId: restIdStr,
-          restaurant_id: restIdStr,
-          restId: restIdStr,
           restaurantName: restaurantName || '',
           commissionRate: commissionRateNum,
         },
-        $push: { transactions: newTransaction },
+        $unset: {
+          transactions: "",
+          date: "",
+          orderId: "",
+          pendingPayment: "",
+          restId: "",
+          restaurant_id: "",
+          totalEarnings: ""
+        },
       },
       { upsert: true, new: true }
     );
@@ -1516,6 +1521,10 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
     if (fcmToken && firebaseAdmin) {
       const message = {
         token: fcmToken,
+        notification: {
+          title: '🔔 NEW ORDER RECEIVED!',
+          body: `Order #${orderId} - Total Amount: ₹${amount}`,
+        },
         data: {
           title: '🔔 NEW ORDER RECEIVED!',
           body: `Order #${orderId} - Total Amount: ₹${amount}`,
@@ -1526,6 +1535,14 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
         },
         android: {
           priority: 'high',
+          notification: {
+            channelId: 'order_incoming_channel_v3',
+            sound: 'ordernotification',
+            priority: 'max',
+            visibility: 'public',
+            defaultSound: true,
+            defaultVibrateTimings: true,
+          },
         },
       };
 
