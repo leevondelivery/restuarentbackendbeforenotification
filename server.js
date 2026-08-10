@@ -1535,12 +1535,12 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
         },
         android: {
           priority: 'high',
+          directBootOk: true,
           notification: {
             channelId: 'order_incoming_channel_v3',
             sound: 'ordernotification',
             priority: 'max',
             visibility: 'public',
-            defaultSound: true,
             defaultVibrateTimings: true,
           },
         },
