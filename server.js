@@ -164,33 +164,6 @@ app.get(['/api/orders/incoming', '/api/orders/incomingorders', '/api/incoming-or
 
     console.log(`Found ${orders.length} orders from orders DB collection for restaurantId: "${targetRestId}"`);
 
-    // Auto-trigger FCM Push Notification for any incoming order not yet marked fcmSent
-    if (orders && orders.length > 0) {
-      orders.forEach(async (ord) => {
-        const ordId = ord._id || ord.orderId || 'UNKNOWN';
-        const isAlreadySent = ord.fcmSent === true || ord.fcmSent === 'true';
-        if (!isAlreadySent) {
-          ord.fcmSent = true;
-          if (db && ordId) {
-            try {
-              await db.collection('orders').updateOne(
-                { $or: [{ _id: ordId }, { orderId: String(ordId) }] },
-                { $set: { fcmSent: true } }
-              );
-              await db.collection('incomingorders').updateOne(
-                { $or: [{ _id: ordId }, { orderId: String(ordId) }] },
-                { $set: { fcmSent: true } }
-              );
-            } catch (e) {}
-          }
-          console.log(`[FCM Auto-Dispatch] Dispatching push notification for incoming Order #${ordId} to restaurantId "${targetRestId}"`);
-          await sendFCMOrderNotification(targetRestId, ord);
-        } else {
-          console.log(`[FCM Auto-Dispatch] Order #${ordId} for restaurantId "${targetRestId}" was already marked fcmSent: true`);
-        }
-      });
-    }
-
     res.json({ success: true, count: orders.length, orders, incomingOrders: orders });
   } catch (err) {
     console.error('Error fetching incoming orders:', err);
