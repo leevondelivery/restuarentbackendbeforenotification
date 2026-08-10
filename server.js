@@ -1557,7 +1557,6 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
         },
         android: {
           priority: 'high',
-          ttl: 0,
           notification: {
             sound: 'ordernotification',
             channelId: 'order_incoming_channel_v3',
@@ -1598,10 +1597,65 @@ app.post('/api/orders/send-notification', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 5000;
+// Server-Side Real-Time Background Order Dispatcher
+// Automatically checks MongoDB for new incoming orders every 3 seconds and dispatches FCM notifications immediately
+// Ensures notifications arrive even when the mobile app is completely CLOSED, KILLED, or phone is LOCKED
+setInterval(async () => {
+  try {
+    const db = mongoose.connection.db;
+    if (!db) return;
 
+    const query = { $or: [{ fcmSent: { $ne: true } }, { fcmSent: { $exists: false } }] };
+
+    const colOrders = db.collection('orders');
+    const newOrders = await colOrders.find(query).toArray();
+
+    const colIncoming = db.collection('incomingorders');
+    const newIncoming = await colIncoming.find(query).toArray();
+
+    const seenIds = new Set();
+    const pendingOrders = [...newOrders, ...newIncoming].filter((ord) => {
+      const idStr = String(ord._id || ord.orderId);
+      if (seenIds.has(idStr)) return false;
+      seenIds.add(idStr);
+      return true;
+    });
+
+    for (const ord of pendingOrders) {
+      const ordId = ord._id || ord.orderId || 'UNKNOWN';
+      const targetRestId = String(
+        ord.restaurantId ||
+          ord.restId ||
+          ord.restaurant_id ||
+          (ord.restaurant && (ord.restaurant.restId || ord.restaurant.id)) ||
+          ''
+      ).trim();
+
+      try {
+        await colOrders.updateOne(
+          { $or: [{ _id: ord._id }, { orderId: String(ordId) }] },
+          { $set: { fcmSent: true } }
+        );
+        await colIncoming.updateOne(
+          { $or: [{ _id: ord._id }, { orderId: String(ordId) }] },
+          { $set: { fcmSent: true } }
+        );
+      } catch (e) {}
+
+      if (targetRestId) {
+        console.log(`[FCM Background Dispatcher] Auto-dispatching push notification for Order #${ordId} to restaurantId "${targetRestId}"`);
+        await sendFCMOrderNotification(targetRestId, ord);
+      }
+    }
+  } catch (err) {
+    // Silent catch
+  }
+}, 3000);
+
+const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server listening on port ${PORT} on all network interfaces (0.0.0.0)`);
 });
+
 
