@@ -1543,10 +1543,6 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
     if (fcmToken && firebaseAdmin) {
       const message = {
         token: fcmToken,
-        notification: {
-          title: '🔔 NEW ORDER RECEIVED!',
-          body: `Order #${orderId} - Total Amount: ₹${amount}`,
-        },
         data: {
           title: '🔔 NEW ORDER RECEIVED!',
           body: `Order #${orderId} - Total Amount: ₹${amount}`,
@@ -1557,13 +1553,6 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
         },
         android: {
           priority: 'high',
-          notification: {
-            sound: 'ordernotification',
-            channelId: 'order_incoming_channel_v3',
-            priority: 'max',
-            defaultSound: false,
-            visibility: 'public',
-          },
         },
       };
 
