@@ -1283,13 +1283,7 @@ app.post('/api/pendingpayments', async (req, res) => {
 
     // Find existing doc for this restaurant and increment totals, OR create fresh doc
     const updatedDoc = await PendingPayment.findOneAndUpdate(
-      {
-        $or: [
-          { restaurantId: restIdStr },
-          { restaurant_id: restIdStr },
-          { restId: restIdStr },
-        ],
-      },
+      { restaurantId: restIdStr },
       {
         $inc: {
           grossTotal: grossTotalNum,
@@ -1301,17 +1295,8 @@ app.post('/api/pendingpayments', async (req, res) => {
           restaurantName: restaurantName || '',
           commissionRate: commissionRateNum,
         },
-        $unset: {
-          transactions: "",
-          date: "",
-          orderId: "",
-          pendingPayment: "",
-          restId: "",
-          restaurant_id: "",
-          totalEarnings: ""
-        },
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true, strict: false }
     );
 
     console.log(`pendingpayments upserted for restaurantId: "${restIdStr}", orderId: "${orderIdStr}"`);
