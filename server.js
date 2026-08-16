@@ -31,7 +31,7 @@ mongoose
   });
 
 // GET Accepted Orders Endpoint (filtered by restaurantId from acceptedbyrestorents collection)
-app.get(['/api/orders/accepted', '/api/accepted-orders', '/api/orders/acceptedbyrestorents', '/api/orders/myorders'], async (req, res) => {
+app.get(['/api/orders/acceptedorders', '/api/orders/accepted', '/api/accepted-orders', '/api/orders/acceptedbyrestorents', '/api/orders/myorders'], async (req, res) => {
   try {
     const { restaurantId, restId, restaurant_id, userId } = req.query;
     const targetRestId = String(restaurantId || restId || restaurant_id || userId || '').trim();
