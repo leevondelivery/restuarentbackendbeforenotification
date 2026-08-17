@@ -450,7 +450,10 @@ app.post(['/api/orders/accept-order', '/accept-order'], async (req, res) => {
       restaurantId: src.restaurantId || src.restId || '1',
       restaurantLocation: src.restaurantLocation || {},
       restaurantName: src.restaurantName || 'Test Restaurant',
-      status: 'accepted',
+      status: (req.body.status || req.body.orderStatus || (prepMins === 0 ? 'Ready' : 'Preparing')),
+      orderStatus: (req.body.status || req.body.orderStatus || (prepMins === 0 ? 'Ready' : 'Preparing')),
+      isReady: Boolean(req.body.isReady ?? (prepMins === 0)),
+      remainingPrepTimeMins: Number(req.body.remainingPrepTimeMins ?? prepMins),
       street: src.street || 'Main Road',
       totalCount: Number(src.totalCount || (src.items ? src.items.length : 1)),
       totalPrice: totalPrice,
@@ -512,6 +515,75 @@ app.post(['/api/orders/accept-order', '/accept-order'], async (req, res) => {
       message: 'Order accepted successfully across collections',
       acceptedOrder: baseAcceptedDoc,
     });
+
+// PUT & POST Update Order Prep Status Endpoint (1-minute periodic sync & Items Ready)
+app.all(['/api/orders/update-status', '/update-status'], async (req, res) => {
+  try {
+    const {
+      orderId,
+      preparationTime,
+      prepTime,
+      remainingPrepTimeMins,
+      status,
+      orderStatus,
+      isReady,
+      readyAt,
+    } = req.body;
+
+    const targetOrderId = String(orderId || req.body?._id || '').trim();
+    if (!targetOrderId) {
+      return res.status(400).json({ success: false, message: 'orderId is required' });
+    }
+
+    const db = mongoose.connection.db;
+    let queryId = targetOrderId;
+    if (mongoose.Types.ObjectId.isValid(targetOrderId)) {
+      queryId = new mongoose.Types.ObjectId(targetOrderId);
+    }
+
+    const currentStatus = status || orderStatus || 'Preparing';
+    const isNowReady = Boolean(isReady || currentStatus.toLowerCase() === 'ready');
+
+    const updateFields = {
+      remainingPrepTimeMins: Number(remainingPrepTimeMins ?? 0),
+      status: currentStatus,
+      orderStatus: currentStatus,
+      isReady: isNowReady,
+      updatedAt: new Date(),
+    };
+
+    if (preparationTime !== undefined || prepTime !== undefined) {
+      updateFields.preparationTime = Number(preparationTime ?? prepTime ?? 0);
+      updateFields.prepTime = Number(preparationTime ?? prepTime ?? 0);
+    }
+
+    if (readyAt || isNowReady) {
+      updateFields.readyAt = readyAt ? new Date(readyAt) : new Date();
+    }
+
+    if (db) {
+      await db.collection('acceptedorders').updateMany(
+        { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
+        { $set: updateFields }
+      );
+      await db.collection('acceptedbyrestorents').updateMany(
+        { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
+        { $set: updateFields }
+      );
+      await db.collection('orderstatuses').updateOne(
+        { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
+        { $set: { status: isNowReady ? 'Ready for pickup' : currentStatus, updatedAt: new Date() } },
+        { upsert: true }
+      );
+    }
+
+    res.json({ success: true, message: 'Order prep status updated in MongoDB', updateFields });
+  } catch (err) {
+    console.error('Error updating order prep status:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
   } catch (err) {
     console.error('Error accepting order:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -1689,3 +1761,59 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 
+
+
+// Backend 1-Minute Background Timer Sync for Order Preparation Countdown & Auto-Ready
+setInterval(async () => {
+  try {
+    const db = mongoose.connection.db;
+    if (!db) return;
+
+    const now = new Date();
+    const nowMs = now.getTime();
+
+    // Fetch active preparing orders from acceptedorders and acceptedbyrestorents
+    const preparingOrders = await db.collection('acceptedorders').find({
+      status: { $regex: /^preparing$/i }
+    }).toArray();
+
+    for (const ord of preparingOrders) {
+      if (!ord || !ord.estimatedPrepEndTime) continue;
+      const endMs = new Date(ord.estimatedPrepEndTime).getTime();
+      const acceptedMs = ord.acceptedAt ? new Date(ord.acceptedAt).getTime() : nowMs;
+      
+      const totalPrepMins = Number(ord.preparationTime ?? ord.prepTime ?? 15);
+      const remainingMins = Math.max(0, Math.ceil((endMs - nowMs) / (60 * 1000)));
+      const isExpired = remainingMins <= 0;
+      const newStatus = isExpired ? 'Ready' : 'Preparing';
+
+      const updatePayload = {
+        remainingPrepTimeMins: remainingMins,
+        status: newStatus,
+        orderStatus: newStatus,
+        isReady: isExpired,
+        updatedAt: now,
+      };
+      if (isExpired) {
+        updatePayload.preparationTime = 0;
+        updatePayload.prepTime = 0;
+        updatePayload.readyAt = now;
+      }
+
+      const queryFilter = { $or: [{ _id: ord._id }, { orderId: ord.orderId }] };
+
+      await db.collection('acceptedorders').updateMany(queryFilter, { $set: updatePayload });
+      await db.collection('acceptedbyrestorents').updateMany(queryFilter, { $set: updatePayload });
+      
+      if (isExpired) {
+        await db.collection('orderstatuses').updateOne(
+          queryFilter,
+          { $set: { status: 'Ready for pickup', updatedAt: now } },
+          { upsert: true }
+        );
+      }
+    }
+  } catch (err) {
+    console.error('Error in backend 1-minute order timer interval:', err.message);
+  }
+}, 60000);
