@@ -1433,7 +1433,10 @@ app.post('/api/pendingpayments', async (req, res) => {
           commissionRate: commissionRateNum,
         },
         $push: {
-          transactions: newTransaction,
+          transactions: {
+            $each: [newTransaction],
+            $position: 0,
+          },
         },
       },
       { upsert: true, new: true, strict: false }
