@@ -31,15 +31,80 @@ mongoose
   });
 
 // GET Accepted Orders Endpoint (filtered by restaurantId from acceptedbyrestorents collection)
-app.get(['/api/orders/acceptedorders', '/api/orders/accepted', '/api/accepted-orders', '/api/orders/acceptedbyrestorents', '/api/orders/myorders'], async (req, res) => {
+// GET Accepted Orders Endpoint (queries ONLY 'acceptedorders' collection)
+app.get(['/api/orders/acceptedorders', '/api/orders/accepted', '/api/accepted-orders'], async (req, res) => {
   try {
     const { restaurantId, restId, restaurant_id, userId } = req.query;
     const targetRestId = String(restaurantId || restId || restaurant_id || userId || '').trim();
 
-    console.log(`Fetch accepted orders request for restaurantId: "${targetRestId}"`);
+    console.log(`Fetch accepted orders request (acceptedorders collection) for restaurantId: "${targetRestId}"`);
 
     if (!targetRestId) {
-      console.log('No restaurantId provided — returning 0 orders.');
+      return res.json({ success: true, count: 0, orders: [] });
+    }
+
+    const numId = !isNaN(targetRestId) ? Number(targetRestId) : -999999;
+    const query = {
+      $or: [
+        { restaurantId: targetRestId },
+        { restaurantId: numId },
+        { restId: targetRestId },
+        { restId: numId },
+        { restaurant_id: targetRestId },
+        { restaurant_id: numId },
+        { 'restaurant.restId': targetRestId },
+        { 'restaurant.id': targetRestId },
+        { 'restaurant._id': targetRestId },
+        { rest: targetRestId },
+      ],
+    };
+
+    let orders = [];
+    const db = mongoose.connection.db;
+
+    if (db) {
+      const colAcceptedOrders = db.collection('acceptedorders');
+      orders = await colAcceptedOrders.find(query).sort({ createdAt: -1, orderDate: -1 }).toArray();
+    } else {
+      orders = await AcceptedOrder.find(query).sort({ createdAt: -1 });
+    }
+
+    if (orders.length === 0 && targetRestId) {
+      const colAcceptedOrders = db ? db.collection('acceptedorders') : null;
+      const allDocs = colAcceptedOrders
+        ? await colAcceptedOrders.find({}).toArray()
+        : await AcceptedOrder.find({});
+
+      orders = allDocs.filter((ord) => {
+        const idStr = String(
+          ord.restaurantId ||
+            ord.restId ||
+            ord.restaurant_id ||
+            (ord.restaurant && (ord.restaurant.restId || ord.restaurant.id)) ||
+            ''
+        ).trim();
+        return idStr === targetRestId || idStr.toLowerCase() === targetRestId.toLowerCase();
+      });
+    }
+
+    console.log(`Found ${orders.length} orders from acceptedorders collection for restaurantId: "${targetRestId}"`);
+
+    res.json({ success: true, count: orders.length, orders });
+  } catch (err) {
+    console.error('Error fetching accepted orders:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET Accepted By Restaurant Orders Endpoint (queries ONLY 'acceptedbyrestorents' collection)
+app.get(['/api/orders/acceptedbyrestorents', '/api/orders/acceptedbyrestaurent', '/api/orders/myorders'], async (req, res) => {
+  try {
+    const { restaurantId, restId, restaurant_id, userId } = req.query;
+    const targetRestId = String(restaurantId || restId || restaurant_id || userId || '').trim();
+
+    console.log(`Fetch acceptedbyrestaurant orders request (acceptedbyrestorents collection) for restaurantId: "${targetRestId}"`);
+
+    if (!targetRestId) {
       return res.json({ success: true, count: 0, orders: [] });
     }
 
@@ -64,25 +129,11 @@ app.get(['/api/orders/acceptedorders', '/api/orders/accepted', '/api/accepted-or
 
     if (db) {
       const colAcceptedByRestorents = db.collection('acceptedbyrestorents');
-      const docs1 = await colAcceptedByRestorents.find(query).sort({ createdAt: -1, orderDate: -1 }).toArray();
-
-      const colAcceptedOrders = db.collection('acceptedorders');
-      const docs2 = await colAcceptedOrders.find(query).sort({ createdAt: -1, orderDate: -1 }).toArray();
-
-      const seen = new Set();
-      orders = [...docs1, ...docs2].filter((ord) => {
-        const key = String(ord.orderId || ord._id);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      orders = await colAcceptedByRestorents.find(query).sort({ createdAt: -1, orderDate: -1 }).toArray();
     } else {
       orders = await AcceptedByRestaurant.find(query).sort({ createdAt: -1 });
     }
 
-    console.log(`Found ${orders.length} orders from acceptedbyrestorents & acceptedorders collections for restaurantId: "${targetRestId}"`);
-
-    // Fallback: If query returned 0 orders but targetRestId is present, try case-insensitive or string match
     if (orders.length === 0 && targetRestId) {
       const colAcceptedByRestorents = db ? db.collection('acceptedbyrestorents') : null;
       const allDocs = colAcceptedByRestorents
@@ -105,7 +156,7 @@ app.get(['/api/orders/acceptedorders', '/api/orders/accepted', '/api/accepted-or
 
     res.json({ success: true, count: orders.length, orders });
   } catch (err) {
-    console.error('Error fetching accepted orders:', err);
+    console.error('Error fetching acceptedbyrestaurant orders:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
