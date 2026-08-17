@@ -1415,7 +1415,7 @@ app.post('/api/pendingpayments', async (req, res) => {
       amount: grandTotalNum,
       date: dateStr.split('T')[0],
       time: timeStr,
-      status: 'Pending Clearance',
+      status: 'Paid',
     };
 
     // Find existing doc for this restaurant and increment totals, OR create fresh doc

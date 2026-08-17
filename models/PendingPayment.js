@@ -7,7 +7,7 @@ const transactionSchema = new mongoose.Schema(
     amount: { type: Number, default: 0 },
     date: { type: String },
     time: { type: String },
-    status: { type: String, default: 'Pending Clearance' },
+    status: { type: String, default: 'Paid' },
   },
   { timestamps: true }
 );
