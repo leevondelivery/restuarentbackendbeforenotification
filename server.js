@@ -541,20 +541,22 @@ app.all(['/api/orders/update-status', '/update-status'], async (req, res) => {
       queryId = new mongoose.Types.ObjectId(targetOrderId);
     }
 
-    const currentStatus = status || orderStatus || 'Preparing';
-    const isNowReady = Boolean(isReady || currentStatus.toLowerCase() === 'ready');
+    const val = Number(preparationTime ?? prepTime ?? remainingPrepTimeMins ?? 0);
+    const isNowReady = Boolean(isReady || (status && status.toLowerCase() === 'ready') || val <= 0);
+    const currentStatus = isNowReady ? 'Ready' : (status || orderStatus || 'Preparing');
 
     const updateFields = {
-      remainingPrepTimeMins: Number(remainingPrepTimeMins ?? 0),
-      status: currentStatus,
-      orderStatus: currentStatus,
-      isReady: isNowReady,
+      preparationTime: val,
+      prepTime: val,
+      remainingPrepTimeMins: val,
       updatedAt: new Date(),
     };
 
-    if (preparationTime !== undefined || prepTime !== undefined) {
-      updateFields.preparationTime = Number(preparationTime ?? prepTime ?? 0);
-      updateFields.prepTime = Number(preparationTime ?? prepTime ?? 0);
+    if (isNowReady) {
+      updateFields.status = 'Ready';
+      updateFields.orderStatus = 'Ready';
+      updateFields.isReady = true;
+      updateFields.readyAt = readyAt ? new Date(readyAt) : new Date();
     }
 
     if (readyAt || isNowReady) {
@@ -1788,15 +1790,15 @@ setInterval(async () => {
       const newStatus = isExpired ? 'Ready' : 'Preparing';
 
       const updatePayload = {
+        preparationTime: remainingMins,
+        prepTime: remainingMins,
         remainingPrepTimeMins: remainingMins,
-        status: newStatus,
-        orderStatus: newStatus,
-        isReady: isExpired,
         updatedAt: now,
       };
       if (isExpired) {
-        updatePayload.preparationTime = 0;
-        updatePayload.prepTime = 0;
+        updatePayload.status = 'Ready';
+        updatePayload.orderStatus = 'Ready';
+        updatePayload.isReady = true;
         updatePayload.readyAt = now;
       }
 
