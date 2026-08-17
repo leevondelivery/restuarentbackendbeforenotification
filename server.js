@@ -1409,6 +1409,7 @@ app.post('/api/pendingpayments', async (req, res) => {
     const timeStr = new Date(dateStr).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
     // Build transaction entry to push
+    // Build transaction entry
     const newTransaction = {
       orderId: orderIdStr,
       amount: grandTotalNum,
@@ -1430,6 +1431,9 @@ app.post('/api/pendingpayments', async (req, res) => {
           restaurantId: restIdStr,
           restaurantName: restaurantName || '',
           commissionRate: commissionRateNum,
+        },
+        $push: {
+          transactions: newTransaction,
         },
       },
       { upsert: true, new: true, strict: false }
@@ -1480,7 +1484,7 @@ app.get('/api/payments', async (req, res) => {
       success: true,
       grossTotal,
       grandTotal,
-      transactions: entries,
+      transactions: entries.flatMap(e => Array.isArray(e.transactions) && e.transactions.length > 0 ? e.transactions : [e]),
     });
   } catch (err) {
     console.error('Error fetching payments:', err);

@@ -1,5 +1,17 @@
 const mongoose = require('mongoose');
 
+const transactionSchema = new mongoose.Schema(
+  {
+    transactionId: { type: String },
+    orderId: { type: String },
+    amount: { type: Number, default: 0 },
+    date: { type: String },
+    time: { type: String },
+    status: { type: String, default: 'Pending Clearance' },
+  },
+  { timestamps: true }
+);
+
 const pendingPaymentSchema = new mongoose.Schema(
   {
     restaurantId: { type: String, required: true },
@@ -8,6 +20,7 @@ const pendingPaymentSchema = new mongoose.Schema(
     grandTotal: { type: Number, default: 0 },
     totalCommissionCut: { type: Number, default: 0 },
     commissionRate: { type: Number, default: 0 },
+    transactions: [transactionSchema],
   },
   {
     timestamps: true,
@@ -16,5 +29,3 @@ const pendingPaymentSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model('PendingPayment', pendingPaymentSchema, 'pendingpayments');
-
-
