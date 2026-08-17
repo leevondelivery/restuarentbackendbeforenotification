@@ -541,18 +541,16 @@ app.all(['/api/orders/update-status', '/update-status'], async (req, res) => {
       queryId = new mongoose.Types.ObjectId(targetOrderId);
     }
 
-    const val = Number(preparationTime ?? prepTime ?? remainingPrepTimeMins ?? 0);
-    const isNowReady = Boolean(isReady || (status && status.toLowerCase() === 'ready') || val <= 0);
-    const currentStatus = isNowReady ? 'Ready' : (status || orderStatus || 'Preparing');
+    const prepVal = Number(preparationTime ?? prepTime ?? remainingPrepTimeMins ?? 0);
+    const isNowReady = Boolean(isReady || (status && status.toLowerCase() === 'ready') || prepVal <= 0);
 
     const updateFields = {
-      preparationTime: val,
-      prepTime: val,
-      remainingPrepTimeMins: val,
+      preparationTime: prepVal,
       updatedAt: new Date(),
     };
 
     if (isNowReady) {
+      updateFields.preparationTime = 0;
       updateFields.status = 'Ready';
       updateFields.orderStatus = 'Ready';
       updateFields.isReady = true;
@@ -1791,11 +1789,10 @@ setInterval(async () => {
 
       const updatePayload = {
         preparationTime: remainingMins,
-        prepTime: remainingMins,
-        remainingPrepTimeMins: remainingMins,
         updatedAt: now,
       };
       if (isExpired) {
+        updatePayload.preparationTime = 0;
         updatePayload.status = 'Ready';
         updatePayload.orderStatus = 'Ready';
         updatePayload.isReady = true;
