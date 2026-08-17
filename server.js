@@ -566,15 +566,13 @@ app.all(['/api/orders/update-status', '/update-status'], async (req, res) => {
         { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
         { $set: updateFields }
       );
-      await db.collection('acceptedbyrestorents').updateMany(
-        { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
-        { $set: updateFields }
-      );
-      await db.collection('orderstatuses').updateOne(
-        { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
-        { $set: { status: isNowReady ? 'Ready for pickup' : currentStatus, updatedAt: new Date() } },
-        { upsert: true }
-      );
+      if (isNowReady) {
+        await db.collection('orderstatuses').updateOne(
+          { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
+          { $set: { status: 'Ready for pickup', updatedAt: new Date() } },
+          { upsert: true }
+        );
+      }
     }
 
     res.json({ success: true, message: 'Order prep status updated in MongoDB', updateFields });
@@ -1802,7 +1800,6 @@ setInterval(async () => {
       const queryFilter = { $or: [{ _id: ord._id }, { orderId: ord.orderId }] };
 
       await db.collection('acceptedorders').updateMany(queryFilter, { $set: updatePayload });
-      await db.collection('acceptedbyrestorents').updateMany(queryFilter, { $set: updatePayload });
       
       if (isExpired) {
         await db.collection('orderstatuses').updateOne(
