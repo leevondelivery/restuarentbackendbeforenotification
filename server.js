@@ -453,7 +453,7 @@ app.post(['/api/orders/accept-order', '/accept-order'], async (req, res) => {
       status: (req.body.status || req.body.orderStatus || (prepMins === 0 ? 'Ready' : 'Preparing')),
       orderStatus: (req.body.status || req.body.orderStatus || (prepMins === 0 ? 'Ready' : 'Preparing')),
       isReady: Boolean(req.body.isReady ?? (prepMins === 0)),
-      remainingPrepTimeMins: Number(req.body.remainingPrepTimeMins ?? prepMins),
+      
       street: src.street || 'Main Road',
       totalCount: Number(src.totalCount || (src.items ? src.items.length : 1)),
       totalPrice: totalPrice,
@@ -555,6 +555,21 @@ app.all(['/api/orders/update-status', '/update-status'], async (req, res) => {
       updateFields.orderStatus = 'Ready';
       updateFields.isReady = true;
       updateFields.readyAt = readyAt ? new Date(readyAt) : new Date();
+    }
+
+    if (db) {
+      await db.collection('acceptedorders').updateMany(
+        { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
+        { $set: updateFields, $unset: { remainingPrepTimeMins: "" } }
+      );
+      if (isNowReady) {
+        await db.collection('orderstatuses').updateOne(
+          { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
+          { $set: { status: 'Ready for pickup', updatedAt: new Date() } },
+          { upsert: true }
+        );
+      }
+      return res.json({ success: true, message: 'Order preparationTime updated', updateFields });
     }
 
     if (readyAt || isNowReady) {
@@ -1799,7 +1814,7 @@ setInterval(async () => {
 
       const queryFilter = { $or: [{ _id: ord._id }, { orderId: ord.orderId }] };
 
-      await db.collection('acceptedorders').updateMany(queryFilter, { $set: updatePayload });
+      await db.collection('acceptedorders').updateMany(queryFilter, { $set: updatePayload, $unset: { remainingPrepTimeMins: "" } });
       
       if (isExpired) {
         await db.collection('orderstatuses').updateOne(
