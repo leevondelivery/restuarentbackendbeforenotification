@@ -1643,7 +1643,7 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
       ],
     });
 
-    // Skip notifications ONLY if restaurant partner explicitly switched toggle to OFFLINE
+    // 1. Skip notifications if restaurant partner switched toggle to OFFLINE / CLOSED (isActive === false)
     const rawActive = userDoc ? (userDoc.isActive !== undefined ? userDoc.isActive : userDoc.isOnline) : undefined;
     const isOffline =
       rawActive === false ||
@@ -1655,18 +1655,12 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
       return { success: false, message: 'Restaurant is offline/closed' };
     }
 
+    // 2. Skip notifications if restaurant partner is LOGGED OUT (fcmToken is empty)
     const fcmToken = String(userDoc?.fcmToken || '').trim();
     if (!fcmToken) {
       console.log(`RestaurantId "${targetRestId}" user is LOGGED OUT (no FCM token). FCM push notification skipped.`);
       return { success: false, message: 'Restaurant is logged out' };
     }
-
-    if (false) {
-      console.log(`RestaurantId "${targetRestId}" is toggled OFFLINE (isActive: false). FCM push notification skipped.`);
-      return { success: false, message: 'Restaurant is offline' };
-    }
-
-    const fcmToken = userDoc?.fcmToken;
     const orderId = orderData.orderId || orderData._id || 'NEW';
     const amount = orderData.grandTotal || orderData.totalPrice || orderData.amount || '0';
 
