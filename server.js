@@ -1132,11 +1132,8 @@ app.put(['/api/restaurant/timings', '/api/users/update-timings', '/api/restauran
     );
 
     if (!updatedUser) {
-      await RestaurantUser.updateMany(
-        {},
-        { $set: { openTime: openTime || '', closeTime: closeTime || '' } }
-      );
-      updatedUser = await RestaurantUser.findOne({});
+      console.warn('[Timings Update] No matching restaurant user found.');
+      return res.status(404).json({ success: false, error: 'Restaurant user not found' });
     }
 
     console.log(`Timings updated to: openTime="${openTime}", closeTime="${closeTime}"`);
@@ -1180,11 +1177,8 @@ app.put(['/api/restaurant/status', '/api/restaurant/toggle-status', '/api/users/
     );
 
     if (!updatedUser) {
-      await RestaurantUser.updateMany(
-        {},
-        { $set: { isActive: activeBool } }
-      );
-      updatedUser = await RestaurantUser.findOne({});
+      console.warn('[Status Update] No matching restaurant user found.');
+      return res.status(404).json({ success: false, error: 'Restaurant user not found' });
     }
 
     console.log(`Status (isActive) updated in restuarentusers collection to: ${activeBool}`);
