@@ -989,6 +989,7 @@ const handleLogin = async (req, res) => {
       closeTime: user.closeTime || '',
       restaurantLocation: user.restaurantLocation || '',
       commission: user.commission || 0,
+      isActive: user.isActive !== undefined ? user.isActive : true,
     };
 
     // Save fcmToken directly if passed during login request
