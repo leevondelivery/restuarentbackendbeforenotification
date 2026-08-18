@@ -976,6 +976,16 @@ const handleLogin = async (req, res) => {
       { expiresIn: '30d' }
     );
 
+    const rawComm =
+      user.commission ??
+      user.commissionRate ??
+      user.commission_rate ??
+      user.commissionPercent ??
+      user.commission_percent ??
+      user.commissionPercentage ??
+      0;
+    const extractedCommission = Number(rawComm) || 0;
+
     const userData = {
       _id: user._id,
       name: user.name || '',
@@ -988,7 +998,8 @@ const handleLogin = async (req, res) => {
       openTime: user.openTime || '',
       closeTime: user.closeTime || '',
       restaurantLocation: user.restaurantLocation || '',
-      commission: user.commission || 0,
+      commission: extractedCommission,
+      commissionRate: extractedCommission,
       isActive: user.isActive !== undefined ? user.isActive : true,
     };
 
@@ -1633,7 +1644,24 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
     });
 
     // Skip notifications ONLY if restaurant partner explicitly switched toggle to OFFLINE
-    if (userDoc && (userDoc.isActive === false || userDoc.isOnline === false)) {
+    const rawActive = userDoc ? (userDoc.isActive !== undefined ? userDoc.isActive : userDoc.isOnline) : undefined;
+    const isOffline =
+      rawActive === false ||
+      rawActive === 0 ||
+      ['false', 'bfalse', '0', 'closed', 'off', 'offline'].includes(String(rawActive || '').trim().toLowerCase());
+
+    if (!userDoc || isOffline) {
+      console.log(`RestaurantId "${targetRestId}" is toggled OFFLINE / CLOSED (isActive: ${userDoc?.isActive}). FCM push notification skipped.`);
+      return { success: false, message: 'Restaurant is offline/closed' };
+    }
+
+    const fcmToken = String(userDoc?.fcmToken || '').trim();
+    if (!fcmToken) {
+      console.log(`RestaurantId "${targetRestId}" user is LOGGED OUT (no FCM token). FCM push notification skipped.`);
+      return { success: false, message: 'Restaurant is logged out' };
+    }
+
+    if (false) {
       console.log(`RestaurantId "${targetRestId}" is toggled OFFLINE (isActive: false). FCM push notification skipped.`);
       return { success: false, message: 'Restaurant is offline' };
     }
