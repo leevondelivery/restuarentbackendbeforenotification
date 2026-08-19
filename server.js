@@ -290,7 +290,7 @@ app.post(['/api/orders/reject-order', '/reject-order'], async (req, res) => {
       items: src.items || [],
       totalCount: src.totalCount || (src.items ? src.items.length : 1),
       totalPrice: Number(src.totalPrice || 200),
-      commission: Number(src.commission ?? req.body?.commission ?? 12),
+      commission: Number(src.commission ?? req.body?.commission ?? 0),
       gst: Number(src.gst ?? 10),
       platformFee: Number(src.platformFee ?? 2),
       grandTotal: Number(src.grandTotal || 250),
@@ -413,10 +413,53 @@ app.post(['/api/orders/accept-order', '/accept-order'], async (req, res) => {
       ? new Date(estimatedPrepEndTime)
       : new Date(Date.now() + prepMins * 60 * 1000);
 
-    const commRate = Number(commissionRate ?? commission ?? src.commissionRate ?? src.commission ?? 5);
-    const totalPrice = Number(src.totalPrice || 200);
-    const commissionAmount = Number(((totalPrice * commRate) / 100).toFixed(2));
-    const totalPriceAfterCommission = Number((totalPrice - commissionAmount).toFixed(2));
+    const targetRestIdStr = String(src.restaurantId || src.restId || req.body?.restaurantId || req.body?.restId || '').trim();
+    let restUserComm = null;
+    if (db && targetRestIdStr) {
+      try {
+        let restUserQuery = {
+          $or: [
+            { restId: targetRestIdStr },
+            { restaurantId: targetRestIdStr },
+            { restaurant_id: targetRestIdStr },
+            { _id: targetRestIdStr },
+          ],
+        };
+        if (mongoose.Types.ObjectId.isValid(targetRestIdStr)) {
+          restUserQuery.$or.push({ _id: new mongoose.Types.ObjectId(targetRestIdStr) });
+        }
+        const restUserDoc = await db.collection('restuarentusers').findOne(restUserQuery);
+        if (restUserDoc) {
+          const foundVal = restUserDoc.commission ?? restUserDoc.commissionRate ?? restUserDoc.commission_rate ?? restUserDoc.commissionPercent;
+          if (foundVal !== undefined && foundVal !== null && foundVal !== '' && !isNaN(Number(foundVal))) {
+            restUserComm = Number(foundVal);
+          }
+        }
+      } catch (e) {
+        console.warn('Error fetching restaurant commission from restuarentusers collection:', e.message);
+      }
+    }
+
+    const commRate = Number(
+      restUserComm ?? commissionRate ?? commission ?? src.commissionRate ?? src.commission ?? 5
+    );
+    let calculatedItemsNet = 0;
+    if (src.items && Array.isArray(src.items) && src.items.length > 0) {
+      calculatedItemsNet = src.items.reduce((acc, it) => {
+        const rawP = Number(it.originalPrice ?? it.price ?? 0) || 0;
+        const discP = commRate > 0
+          ? rawP * (1 - commRate / 100)
+          : (it.priceAfterCommission !== undefined ? Number(it.priceAfterCommission) || 0 : rawP);
+        const qty = Number(it.quantity || it.qty || 1) || 1;
+        return acc + (discP * qty);
+      }, 0);
+    }
+
+    const totalPrice = Number(src.totalPrice || (calculatedItemsNet > 0 ? calculatedItemsNet : 200));
+    const totalPriceAfterCommission = calculatedItemsNet > 0
+      ? Number(calculatedItemsNet.toFixed(2))
+      : Number((totalPrice * (1 - commRate / 100)).toFixed(2));
+    const commissionAmount = Number((totalPrice - totalPriceAfterCommission).toFixed(2));
     const netEarnings = totalPriceAfterCommission;
 
     const baseAcceptedDoc = {
@@ -737,7 +780,7 @@ app.get(['/api/payments', '/api/payments/history'], async (req, res) => {
       const acceptedOrders = await AcceptedByRestaurant.find(query).sort({ createdAt: -1 });
 
       acceptedOrders.forEach((ord, index) => {
-        const commRate = ord.commissionRate ?? ord.commission ?? 12;
+        const commRate = ord.commissionRate ?? ord.commission ?? 0;
         let orderTotal = ord.netEarnings ?? 0;
 
         if (!orderTotal && ord.items && Array.isArray(ord.items)) {
@@ -846,25 +889,27 @@ app.get(['/api/restaurant/stats', '/api/orders/acceptedbyrestorents/stats', '/ap
     orders.forEach((ord) => {
       const commRate = Number(ord.commissionRate ?? ord.commission ?? 5);
 
-      let orderAmount =
-        ord.totalPriceAfterCommission ??
-        ord.netEarnings ??
-        ord.totalEarnings ??
-        ord.netAmount;
+      let orderAmount = 0;
 
-      if (orderAmount === undefined || orderAmount === null || isNaN(Number(orderAmount)) || Number(orderAmount) <= 0) {
-        if (ord.items && Array.isArray(ord.items) && ord.items.length > 0) {
-          orderAmount = ord.items.reduce((sum, item) => {
-            const rawP = Number(item.originalPrice ?? item.price ?? 0) || 0;
-            const discP = commRate > 0
-              ? rawP * (1 - commRate / 100)
-              : (item.priceAfterCommission !== undefined ? Number(item.priceAfterCommission) || 0 : rawP);
-            return sum + discP * (item.quantity || item.qty || 1);
-          }, 0);
-        }
+      if (ord.items && Array.isArray(ord.items) && ord.items.length > 0) {
+        orderAmount = ord.items.reduce((sum, item) => {
+          const rawP = Number(item.originalPrice ?? item.price ?? 0) || 0;
+          const discP = commRate > 0
+            ? rawP * (1 - commRate / 100)
+            : (item.priceAfterCommission !== undefined ? Number(item.priceAfterCommission) || 0 : rawP);
+          return sum + discP * (item.quantity || item.qty || 1);
+        }, 0);
       }
 
-      if (orderAmount === undefined || orderAmount === null || isNaN(Number(orderAmount)) || Number(orderAmount) <= 0) {
+      if (!orderAmount || isNaN(Number(orderAmount)) || Number(orderAmount) <= 0) {
+        orderAmount =
+          ord.totalPriceAfterCommission ??
+          ord.netEarnings ??
+          ord.totalEarnings ??
+          ord.netAmount;
+      }
+
+      if (!orderAmount || isNaN(Number(orderAmount)) || Number(orderAmount) <= 0) {
         const grossP = Number(ord.totalPrice ?? ord.grandTotal ?? ord.amount ?? 0) || 0;
         orderAmount = commRate > 0 ? grossP * (1 - commRate / 100) : grossP;
       }
@@ -885,7 +930,7 @@ app.get(['/api/restaurant/stats', '/api/orders/acceptedbyrestorents/stats', '/ap
           orderDate.getMonth() === now.getMonth() &&
           orderDate.getDate() === now.getDate();
 
-        if (isToday || orderDate >= startOfTodayLocal) {
+        if (isToday) {
           todayOrders += 1;
           todayEarnings += numAmount;
         }
