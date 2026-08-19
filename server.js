@@ -1493,12 +1493,6 @@ app.post('/api/pendingpayments', async (req, res) => {
           restaurantName: restaurantName || '',
           commissionRate: commissionRateNum,
         },
-        $push: {
-          transactions: {
-            $each: [newTransaction],
-            $position: 0,
-          },
-        },
       },
       { upsert: true, new: true, strict: false }
     );
