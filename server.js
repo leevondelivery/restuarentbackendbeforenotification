@@ -774,39 +774,6 @@ app.get(['/api/payments', '/api/payments/history'], async (req, res) => {
           });
         }
       });
-    } else {
-      // Fallback: Compute from acceptedbyrestorents collection if pendingpayments collection has no records yet
-      console.log('pendingpayments collection empty, calculating from acceptedbyrestorents...');
-      const acceptedOrders = await AcceptedByRestaurant.find(query).sort({ createdAt: -1 });
-
-      acceptedOrders.forEach((ord, index) => {
-        const commRate = ord.commissionRate ?? ord.commission ?? 0;
-        let orderTotal = ord.netEarnings ?? 0;
-
-        if (!orderTotal && ord.items && Array.isArray(ord.items)) {
-          orderTotal = ord.items.reduce((sum, item) => {
-            const p = item.priceAfterCommission ?? item.price ?? item.originalPrice ?? 0;
-            return sum + p * (item.quantity || 1);
-          }, 0);
-        }
-        if (!orderTotal) orderTotal = 176.0;
-
-        grossTotal += orderTotal;
-        grandTotal += orderTotal;
-
-        const txDate = ord.createdAt ? new Date(ord.createdAt) : new Date();
-        const formattedDate = txDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-        const formattedTime = txDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-        transactions.push({
-          _id: ord._id,
-          transactionId: ord.transactionId || ord.orderId || ord.orderid || `TXN-${98400 - index}`,
-          amount: orderTotal,
-          date: formattedDate,
-          time: formattedTime,
-          status: ord.status || 'Pending Clearance',
-        });
-      });
     }
 
     res.json({
