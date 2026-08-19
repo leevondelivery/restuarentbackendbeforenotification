@@ -413,7 +413,7 @@ app.post(['/api/orders/accept-order', '/accept-order'], async (req, res) => {
       ? new Date(estimatedPrepEndTime)
       : new Date(Date.now() + prepMins * 60 * 1000);
 
-    const commRate = Number(commissionRate ?? commission ?? src.commissionRate ?? src.commission ?? 12);
+    const commRate = Number(commissionRate ?? commission ?? src.commissionRate ?? src.commission ?? 5);
     const totalPrice = Number(src.totalPrice || 200);
     const commissionAmount = Number(((totalPrice * commRate) / 100).toFixed(2));
     const totalPriceAfterCommission = Number((totalPrice - commissionAmount).toFixed(2));
@@ -847,19 +847,29 @@ app.get(['/api/restaurant/stats', '/api/orders/acceptedbyrestorents/stats', '/ap
     let totalOrders = orders.length;
 
     orders.forEach((ord) => {
+      const commRate = Number(ord.commissionRate ?? ord.commission ?? 5);
+
       let orderAmount =
+        ord.totalPriceAfterCommission ??
         ord.netEarnings ??
         ord.totalEarnings ??
-        ord.totalPriceAfterCommission ??
-        ord.netAmount ??
-        ord.totalPrice ??
-        0;
+        ord.netAmount;
 
-      if (!orderAmount && ord.items && Array.isArray(ord.items)) {
-        orderAmount = ord.items.reduce((sum, item) => {
-          const p = item.priceAfterCommission ?? item.price ?? item.originalPrice ?? 0;
-          return sum + p * (item.quantity || 1);
-        }, 0);
+      if (orderAmount === undefined || orderAmount === null || isNaN(Number(orderAmount)) || Number(orderAmount) <= 0) {
+        if (ord.items && Array.isArray(ord.items) && ord.items.length > 0) {
+          orderAmount = ord.items.reduce((sum, item) => {
+            const rawP = Number(item.originalPrice ?? item.price ?? 0) || 0;
+            const discP = commRate > 0
+              ? rawP * (1 - commRate / 100)
+              : (item.priceAfterCommission !== undefined ? Number(item.priceAfterCommission) || 0 : rawP);
+            return sum + discP * (item.quantity || item.qty || 1);
+          }, 0);
+        }
+      }
+
+      if (orderAmount === undefined || orderAmount === null || isNaN(Number(orderAmount)) || Number(orderAmount) <= 0) {
+        const grossP = Number(ord.totalPrice ?? ord.grandTotal ?? ord.amount ?? 0) || 0;
+        orderAmount = commRate > 0 ? grossP * (1 - commRate / 100) : grossP;
       }
 
       const numAmount = Number(orderAmount) || 0;
