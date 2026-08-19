@@ -875,7 +875,7 @@ app.get(['/api/restaurant/stats', '/api/orders/acceptedbyrestorents/stats', '/ap
       const numAmount = Number(orderAmount) || 0;
       totalEarnings += numAmount;
 
-      const rawDateStr = ord.orderDate || ord.createdAt || ord.date;
+      const rawDateStr = ord.acceptedAt || ord.orderDate || ord.createdAt || ord.date;
       const orderDate = rawDateStr
         ? new Date(rawDateStr)
         : ord._id && ord._id.getTimestamp
