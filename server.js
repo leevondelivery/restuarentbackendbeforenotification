@@ -832,10 +832,7 @@ app.get(['/api/restaurant/stats', '/api/orders/acceptedbyrestorents/stats', '/ap
         return !targetRestId || idStr === targetRestId || idStr.toLowerCase() === targetRestId.toLowerCase();
       });
 
-      // If still 0 and targetRestId is generic or single restaurant setup, fallback to all docs
-      if (orders.length === 0 && allDocs.length > 0) {
-        orders = allDocs;
-      }
+      // Do not fallback to allDocs if targetRestId is specified and has 0 orders
     }
 
     const now = new Date();
