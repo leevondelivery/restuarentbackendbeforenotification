@@ -1471,9 +1471,12 @@ app.post('/api/pendingpayments', async (req, res) => {
     const newTransaction = {
       orderId: orderIdStr,
       amount: grandTotalNum,
-      date: dateStr.split('T')[0],
+      grossTotal: grossTotalNum,
+      commissionRate: commissionRateNum,
+      totalCommissionCut: totalCommissionCutNum,
+      date: dateStr,
       time: timeStr,
-      status: 'Paid',
+      status: req.body?.status || 'Pending Clearance',
     };
 
     // Find existing doc for this restaurant and increment totals, OR create fresh doc
