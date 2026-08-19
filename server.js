@@ -1172,7 +1172,7 @@ app.put(['/api/restaurant/status', '/api/restaurant/toggle-status', '/api/users/
 
     let updatedUser = await RestaurantUser.findOneAndUpdate(
       query,
-      { $set: { isActive: activeBool } },
+      { $set: { isActive: activeBool, isManuallyToggled: true, manualStatusUpdatedAt: new Date() } },
       { new: true }
     );
 
@@ -1667,6 +1667,10 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
     if (fcmToken && firebaseAdmin) {
       const message = {
         token: fcmToken,
+        notification: {
+          title: '🔔 NEW ORDER RECEIVED!',
+          body: `Order #${orderId} - Total Amount: ₹${amount}`,
+        },
         data: {
           title: '🔔 NEW ORDER RECEIVED!',
           body: `Order #${orderId} - Total Amount: ₹${amount}`,
@@ -1675,13 +1679,19 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
           grandTotal: String(amount),
           restaurantId: String(targetRestId),
           sound: 'ordernotification',
-          channelId: 'order_incoming_channel_v3',
+          channelId: 'order_incoming_channel_v5',
           type: 'NEW_ORDER_ALERT',
         },
         android: {
           priority: 'high',
           directBootOk: true,
           ttl: 0,
+          notification: {
+            channelId: 'order_incoming_channel_v5',
+            sound: 'ordernotification',
+            icon: 'ic_stat_notification',
+            color: '#000000',
+          },
         },
       };
 
