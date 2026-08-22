@@ -298,8 +298,7 @@ app.post(['/api/orders/reject-order', '/reject-order'], async (req, res) => {
       influencerName: src.influencerName ?? null,
       discountAmount: Number(src.discountAmount ?? 0),
       orderId: targetOrderId,
-      razorpayOrderId: src.razorpayOrderId || 'order_mock_12345',
-      razorpayPaymentId: src.razorpayPaymentId || 'pay_mock_12345',
+      cashfreeOrderId: src.cashfreeOrderId || src.orderId || targetOrderId, cashfreePaymentSessionId: src.cashfreePaymentSessionId || src.paymentId || '', paymentId: src.paymentId || src.cashfreePaymentSessionId || '', paymentMethod: src.paymentMethod || src.paymentMode || 'Cashfree',
       paymentStatus: src.paymentStatus || 'Paid',
       coinsEarned: Number(src.coinsEarned ?? 10),
       userName: src.userName || 'Test User',
@@ -487,8 +486,7 @@ app.post(['/api/orders/accept-order', '/accept-order'], async (req, res) => {
       orderDate: src.orderDate ? new Date(src.orderDate) : new Date(),
       paymentStatus: src.paymentStatus || 'Paid',
       platformFee: Number(src.platformFee ?? 2),
-      razorpayOrderId: src.razorpayOrderId || 'order_mock_12345',
-      razorpayPaymentId: src.razorpayPaymentId || 'pay_mock_12345',
+      cashfreeOrderId: src.cashfreeOrderId || src.orderId || targetOrderId, cashfreePaymentSessionId: src.cashfreePaymentSessionId || src.paymentId || '', paymentId: src.paymentId || src.cashfreePaymentSessionId || '', paymentMethod: src.paymentMethod || src.paymentMode || 'Cashfree',
       rest: src.rest || (src.restaurantLocation?.name) || 'Nandyal Road',
       restaurantId: src.restaurantId || src.restId || '1',
       restaurantLocation: src.restaurantLocation || {},
@@ -1868,3 +1866,4 @@ setInterval(async () => {
     console.error('Error in backend 1-minute order timer interval:', err.message);
   }
 }, 60000);
+
