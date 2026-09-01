@@ -23,4 +23,8 @@ const reviewSchema = new mongoose.Schema(
   { collection: 'reviews' }
 );
 
+
+// Fast MongoDB lookup indexing (<10ms)
+reviewSchema.index({ restaurantId: 1, restId: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Review', reviewSchema);

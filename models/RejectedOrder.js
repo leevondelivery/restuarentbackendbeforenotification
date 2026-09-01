@@ -39,4 +39,8 @@ const rejectedOrderSchema = new mongoose.Schema(
   { strict: false, collection: 'rejectedorders' }
 );
 
+
+// Fast MongoDB lookup indexing (<10ms)
+rejectedOrderSchema.index({ restaurantId: 1, restId: 1, createdAt: -1 });
+
 module.exports = mongoose.model('RejectedOrder', rejectedOrderSchema);

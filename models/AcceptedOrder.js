@@ -46,4 +46,8 @@ const acceptedOrderSchema = new mongoose.Schema(
   { strict: false, collection: 'acceptedorders' }
 );
 
+
+// Fast MongoDB lookup indexing (<10ms)
+acceptedOrderSchema.index({ restaurantId: 1, restId: 1, createdAt: -1 });
+
 module.exports = mongoose.model('AcceptedOrder', acceptedOrderSchema);

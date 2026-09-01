@@ -14,6 +14,14 @@ const PendingPayment = require('./models/PendingPayment');
 
 const app = express();
 
+// Fast Connection Optimization: HTTP Keep-Alive Middleware
+app.use((req, res, next) => {
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Keep-Alive', 'timeout=15, max=100');
+  next();
+});
+
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -1688,6 +1696,9 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
           totalPrice: String(amount),
           grandTotal: String(amount),
           restaurantId: String(targetRestId),
+          userName: String(orderData.userName || orderData.customerName || orderData.name || 'Customer'),
+          userPhone: String(orderData.userPhone || orderData.phone || orderData.mobileNumber || ''),
+          items: JSON.stringify(orderData.items || []),
           sound: 'ordernotification',
           channelId: 'order_incoming_channel_v5',
           type: 'NEW_ORDER_ALERT',

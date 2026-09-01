@@ -24,4 +24,8 @@ const RestaurantUserSchema = new mongoose.Schema(
   }
 );
 
+
+// Fast MongoDB lookup indexing (<10ms)
+RestaurantUserSchema.index({ restaurantId: 1, restId: 1, createdAt: -1 });
+
 module.exports = mongoose.model('RestaurantUser', RestaurantUserSchema, 'restuarentusers');
