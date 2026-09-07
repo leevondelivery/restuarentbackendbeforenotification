@@ -1578,7 +1578,7 @@ app.post('/api/restaurant/fcm-token', async (req, res) => {
 
     console.log(`Received FCM token registration for targetRestId "${targetRestId}": ${fcmToken}`);
 
-    if (!fcmToken) {
+    if (fcmToken === undefined || fcmToken === null) {
       return res.status(400).json({ success: false, error: 'fcmToken is required' });
     }
 
