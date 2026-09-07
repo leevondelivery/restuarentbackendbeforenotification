@@ -615,6 +615,10 @@ app.all(['/api/orders/update-status', '/update-status'], async (req, res) => {
         { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
         { $set: updateFields, $unset: { remainingPrepTimeMins: "" } }
       );
+      await db.collection('acceptedbydeliveries').updateMany(
+        { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
+        { $set: updateFields, $unset: { remainingPrepTimeMins: "" } }
+      );
       if (isNowReady) {
         await db.collection('orderstatuses').updateOne(
           { $or: [{ _id: queryId }, { _id: targetOrderId }, { orderId: targetOrderId }] },
@@ -1869,6 +1873,7 @@ setInterval(async () => {
 
       await db.collection('acceptedorders').updateMany(queryFilter, { $set: updatePayload, $unset: { remainingPrepTimeMins: "" } });
       await db.collection('acceptedbyrestorents').updateMany(queryFilter, { $set: updatePayload, $unset: { remainingPrepTimeMins: "" } });
+      await db.collection('acceptedbydeliveries').updateMany(queryFilter, { $set: updatePayload, $unset: { remainingPrepTimeMins: "" } });
       
       if (isExpired) {
         await db.collection('orderstatuses').updateOne(
