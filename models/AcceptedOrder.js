@@ -14,13 +14,21 @@ const acceptedOrderSchema = new mongoose.Schema(
     preparationTime: { type: Number },
     estimatedPrepEndTime: { type: Date },
     gst: { type: Number },
+    foodGst: { type: Number },
+    deliveryGst: { type: Number },
     platformFee: { type: Number },
     grandTotal: { type: Number },
     couponCode: { type: String, default: null },
     influencerName: { type: String, default: null },
     discountAmount: { type: Number, default: 0 },
+    couponDiscount: { type: Number, default: 0 },
+    tieredDiscount: { type: Number, default: 0 },
+    tieredDiscountLabel: { type: String, default: null },
+    totalSavings: { type: Number, default: 0 },
     razorpayOrderId: { type: String },
     razorpayPaymentId: { type: String },
+    paymentId: { type: String },
+    paymentMethod: { type: String },
     paymentStatus: { type: String },
     coinsEarned: { type: Number },
     userName: { type: String },
@@ -38,6 +46,8 @@ const acceptedOrderSchema = new mongoose.Schema(
     userCoordinates: { type: Object },
     deliveryDistance: { type: String },
     deliveryFee: { type: Number },
+    surgeFee: { type: Number, default: 0 },
+    fcmSent: { type: Boolean, default: true },
     aa: { type: String, default: 'gg' },
     orderDate: { type: Date },
     status: { type: String, default: 'accepted' },
@@ -45,7 +55,6 @@ const acceptedOrderSchema = new mongoose.Schema(
   },
   { strict: false, collection: 'acceptedorders' }
 );
-
 
 // Fast MongoDB lookup indexing (<10ms)
 acceptedOrderSchema.index({ restaurantId: 1, restId: 1, createdAt: -1 });

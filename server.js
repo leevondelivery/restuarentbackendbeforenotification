@@ -469,49 +469,76 @@ app.post(['/api/orders/accept-order', '/accept-order'], async (req, res) => {
     const commissionAmount = Number((totalPrice - totalPriceAfterCommission).toFixed(2));
     const netEarnings = totalPriceAfterCommission;
 
+    // Process _id to preserve original ObjectId if available
+    let finalDocId = src._id || queryId;
+    if (typeof finalDocId === 'string' && mongoose.Types.ObjectId.isValid(finalDocId) && finalDocId.length === 24) {
+      try {
+        finalDocId = new mongoose.Types.ObjectId(finalDocId);
+      } catch (e) {}
+    }
+
+    // Process items array ensuring all item attributes are retained
+    let finalItems = src.items || [];
+    if (typeof finalItems === 'string') {
+      try {
+        finalItems = JSON.parse(finalItems);
+      } catch (e) {}
+    }
+
     const baseAcceptedDoc = {
-      _id: src._id || queryId,
+      ...src, // Retain ALL incoming order fields (foodGst, deliveryGst, tieredDiscount, etc.)
+      _id: finalDocId,
+      userId: String(src.userId || ''),
+      items: Array.isArray(finalItems) ? finalItems : [],
+      totalCount: Number(src.totalCount || (Array.isArray(finalItems) ? finalItems.length : 1)),
+      totalPrice: Number(src.totalPrice ?? totalPrice),
+      gst: Number(src.gst ?? 0),
+      foodGst: Number(src.foodGst ?? 0),
+      deliveryGst: Number(src.deliveryGst ?? 0),
+      platformFee: Number(src.platformFee ?? 0),
+      grandTotal: Number(src.grandTotal ?? totalPrice),
+      couponCode: src.couponCode ?? null,
+      influencerName: src.influencerName ?? null,
+      discountAmount: Number(src.discountAmount ?? 0),
+      couponDiscount: Number(src.couponDiscount ?? 0),
+      tieredDiscount: Number(src.tieredDiscount ?? 0),
+      tieredDiscountLabel: src.tieredDiscountLabel ?? null,
+      totalSavings: Number(src.totalSavings ?? src.discountAmount ?? 0),
       orderId: targetOrderId,
+      razorpayOrderId: src.razorpayOrderId || src.orderId || targetOrderId,
+      razorpayPaymentId: src.razorpayPaymentId || src.paymentId || '',
+      paymentId: src.razorpayPaymentId || src.paymentId || '',
+      paymentMethod: src.paymentMethod || src.paymentMode || 'COD',
+      paymentStatus: src.paymentStatus || 'Pending',
+      coinsEarned: Number(src.coinsEarned ?? 0),
+      userName: src.userName || '',
+      userEmail: src.userEmail || '',
+      userPhone: src.userPhone || '',
+      isPhoneVerified: Boolean(src.isPhoneVerified ?? true),
+      flatNo: src.flatNo || '',
+      street: src.street || '',
+      landmark: src.landmark || '',
+      deliveryAddress: src.deliveryAddress || [src.flatNo, src.street, src.landmark].filter(Boolean).join(', ') || 'Address',
+      restaurantId: String(src.restaurantId || src.restId || '1'),
+      restaurantName: src.restaurantName || '',
+      restaurantLocation: src.restaurantLocation || {},
+      userCoordinates: src.userCoordinates || {},
+      deliveryDistance: src.deliveryDistance || '',
+      deliveryFee: Number(src.deliveryFee ?? 0),
+      surgeFee: Number(src.surgeFee ?? 0),
+      orderDate: src.orderDate ? new Date(src.orderDate) : new Date(),
+      fcmSent: src.fcmSent !== undefined ? Boolean(src.fcmSent) : true,
+      commissionRate: commRate,
+      commissionAmount: commissionAmount,
+      totalPriceAfterCommission: totalPriceAfterCommission,
+      netEarnings: netEarnings,
       preparationTime: prepMins,
       estimatedPrepEndTime: computedPrepEnd,
-      aa: src.aa || 'gg',
-      coinsEarned: Number(src.coinsEarned ?? 10),
-      commissionAmount: commissionAmount,
-      commissionRate: commRate,
-      couponCode: src.couponCode ?? null,
-      deliveryAddress: src.deliveryAddress || '101, Main Road , Near Park',
-      deliveryDistance: src.deliveryDistance || '3.5 km',
-      deliveryFee: Number(src.deliveryFee ?? 38),
-      discountAmount: Number(src.discountAmount ?? 0),
-      flatNo: src.flatNo || '101',
-      grandTotal: Number(src.grandTotal || 250),
-      gst: Number(src.gst ?? 10),
-      influencerName: src.influencerName ?? null,
-      isPhoneVerified: src.isPhoneVerified ?? true,
-      items: src.items || [],
-      landmark: src.landmark || 'Near Park',
-      netEarnings: netEarnings,
-      orderDate: src.orderDate ? new Date(src.orderDate) : new Date(),
-      paymentStatus: src.paymentStatus || 'Paid',
-      platformFee: Number(src.platformFee ?? 2),
-      razorpayOrderId: src.razorpayOrderId || src.orderId || targetOrderId, razorpayPaymentId: src.razorpayPaymentId || src.paymentId || '', paymentId: src.razorpayPaymentId || src.paymentId || '', paymentMethod: src.paymentMethod || src.paymentMode || 'Razorpay',
-      rest: src.rest || (src.restaurantLocation?.name) || 'Nandyal Road',
-      restaurantId: src.restaurantId || src.restId || '1',
-      restaurantLocation: src.restaurantLocation || {},
-      restaurantName: src.restaurantName || 'Test Restaurant',
       status: (req.body.status || req.body.orderStatus || (prepMins === 0 ? 'Ready' : 'Preparing')),
       orderStatus: (req.body.status || req.body.orderStatus || (prepMins === 0 ? 'Ready' : 'Preparing')),
       isReady: Boolean(req.body.isReady ?? (prepMins === 0)),
-      
-      street: src.street || 'Main Road',
-      totalCount: Number(src.totalCount || (src.items ? src.items.length : 1)),
-      totalPrice: totalPrice,
-      totalPriceAfterCommission: totalPriceAfterCommission,
-      userCoordinates: src.userCoordinates || {},
-      userEmail: src.userEmail || 'test@example.com',
-      userId: src.userId || 'USER_ID',
-      userName: src.userName || 'Test User',
-      userPhone: src.userPhone || '9876543210',
+      rest: src.rest || (src.restaurantLocation?.name) || 'Nandyal Road',
+      aa: src.aa || 'gg',
       acceptedAt: new Date(),
     };
 
@@ -1298,6 +1325,7 @@ app.get(['/api/menu', '/api/menu/items'], async (req, res) => {
           _id: doc._id.toString(),
           name: doc.name || doc.itemName || doc.title || 'Item',
           price: doc.price || doc.itemPrice || doc.cost || 0,
+        isFreeItem: doc.isFreeItem === true || doc.isFreeItem === 'true' || String(doc.isFreeItem).toLowerCase() === 'true' || Number(doc.price || doc.itemPrice || doc.cost || 0) === 0,
           itemStatus: statusVal,
           itemtodisplayintherestuarentapp: displayVal,
           category: doc.category || '',
@@ -1343,6 +1371,7 @@ app.get(['/api/menu', '/api/menu/items'], async (req, res) => {
               _id: doc._id.toString(),
               name: doc.name || doc.itemName || doc.title || 'Item',
               price: doc.price || doc.itemPrice || doc.cost || 0,
+        isFreeItem: doc.isFreeItem === true || doc.isFreeItem === 'true' || String(doc.isFreeItem).toLowerCase() === 'true' || Number(doc.price || doc.itemPrice || doc.cost || 0) === 0,
               itemStatus: statusVal,
               itemtodisplayintherestuarentapp: displayVal,
               category: doc.category || '',
