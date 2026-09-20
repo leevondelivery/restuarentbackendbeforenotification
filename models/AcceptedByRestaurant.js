@@ -7,6 +7,7 @@ const acceptedByRestaurantSchema = new mongoose.Schema(
     items: { type: Array, default: [] },
     totalCount: { type: Number },
     totalPrice: { type: Number },
+    packagingFee: { type: Number, default: 0 },
     commissionRate: { type: Number, default: 12 },
     commissionAmount: { type: Number },
     totalPriceAfterCommission: { type: Number },

@@ -7,6 +7,7 @@ const rejectedOrderSchema = new mongoose.Schema(
     items: { type: Array, default: [] },
     totalCount: { type: Number },
     totalPrice: { type: Number },
+    packagingFee: { type: Number, default: 0 },
     commission: { type: Number, default: 12 },
     gst: { type: Number },
     platformFee: { type: Number },

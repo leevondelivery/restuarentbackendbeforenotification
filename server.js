@@ -298,6 +298,21 @@ app.post(['/api/orders/reject-order', '/reject-order'], async (req, res) => {
       items: src.items || [],
       totalCount: src.totalCount || (src.items ? src.items.length : 1),
       totalPrice: Number(src.totalPrice || 200),
+      packagingFee: Number(
+        src.packagingFee ??
+        src.orderData?.packagingFee ??
+        src.packagingCharges ??
+        src.orderData?.packagingCharges ??
+        src.packagingCharge ??
+        src.orderData?.packagingCharge ??
+        src.packingFee ??
+        src.orderData?.packingFee ??
+        src.packingCharges ??
+        src.orderData?.packingCharges ??
+        src.packaging_fee ??
+        src.packing_fee ??
+        0
+      ) || 0,
       commission: Number(src.commission ?? req.body?.commission ?? 0),
       gst: Number(src.gst ?? 10),
       platformFee: Number(src.platformFee ?? 2),
@@ -462,11 +477,28 @@ app.post(['/api/orders/accept-order', '/accept-order'], async (req, res) => {
       }, 0);
     }
 
+    const packagingFee = Number(
+      src.packagingFee ??
+      src.orderData?.packagingFee ??
+      src.packagingCharges ??
+      src.orderData?.packagingCharges ??
+      src.packagingCharge ??
+      src.orderData?.packagingCharge ??
+      src.packingFee ??
+      src.orderData?.packingFee ??
+      src.packingCharges ??
+      src.orderData?.packingCharges ??
+      src.packaging_fee ??
+      src.packing_fee ??
+      0
+    ) || 0;
+
     const totalPrice = Number(src.totalPrice || (calculatedItemsNet > 0 ? calculatedItemsNet : 200));
-    const totalPriceAfterCommission = calculatedItemsNet > 0
+    const itemsNetAfterCommission = calculatedItemsNet > 0
       ? Number(calculatedItemsNet.toFixed(2))
       : Number((totalPrice * (1 - commRate / 100)).toFixed(2));
-    const commissionAmount = Number((totalPrice - totalPriceAfterCommission).toFixed(2));
+    const totalPriceAfterCommission = Number((itemsNetAfterCommission + packagingFee).toFixed(2));
+    const commissionAmount = Number((totalPrice - itemsNetAfterCommission).toFixed(2));
     const netEarnings = totalPriceAfterCommission;
 
     // Process _id to preserve original ObjectId if available
@@ -492,6 +524,7 @@ app.post(['/api/orders/accept-order', '/accept-order'], async (req, res) => {
       items: Array.isArray(finalItems) ? finalItems : [],
       totalCount: Number(src.totalCount || (Array.isArray(finalItems) ? finalItems.length : 1)),
       totalPrice: Number(src.totalPrice ?? totalPrice),
+      packagingFee: packagingFee,
       gst: Number(src.gst ?? 0),
       foodGst: Number(src.foodGst ?? 0),
       deliveryGst: Number(src.deliveryGst ?? 0),
@@ -555,6 +588,7 @@ app.post(['/api/orders/accept-order', '/accept-order'], async (req, res) => {
       const colAcceptedByRest = db.collection('acceptedbyrestorents');
       const acceptedByRestDoc = {
         ...baseAcceptedDoc,
+        packagingFee: packagingFee,
         preparationTime: prepMins,
         estimatedPrepEndTime: computedPrepEnd,
       };
