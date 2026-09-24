@@ -14,7 +14,7 @@ const PendingPayment = require('./models/PendingPayment');
 
 const app = express();
 
-// Fast Connection Optimization: HTTP Keep-Alive Middleware
+// Fast Connection Optimizati
 app.use((req, res, next) => {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('Keep-Alive', 'timeout=15, max=100');
