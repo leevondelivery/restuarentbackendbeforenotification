@@ -1633,10 +1633,10 @@ try {
   console.warn('Firebase Admin SDK setup notice:', e.message);
 }
 
-// POST /api/restaurant/fcm-token — Save or Update FCM Device Token for a specific Restaurant User
+// POST /api/restaurant/fcm-token - Save or Update FCM Device Token for a specific Restaurant User (and any linked sub-restaurants)
 app.post('/api/restaurant/fcm-token', async (req, res) => {
   try {
-    const { restaurantId, restId, userId, phone, email, fcmToken } = req.body;
+    const { restaurantId, restId, userId, phone, email, subrestaurentsId, subrestaurantsId, subrestaurents_id, fcmToken } = req.body;
     const targetRestId = String(restaurantId || restId || userId || phone || email || '').trim();
 
     console.log(`Received FCM token registration for targetRestId "${targetRestId}": ${fcmToken}`);
@@ -1681,6 +1681,79 @@ app.post('/api/restaurant/fcm-token', async (req, res) => {
       queryConditions.push({ email: String(email) });
     }
 
+    // First find primary user to extract any linked sub-restaurants stored in DB
+    const primaryFilter = queryConditions.length > 0 ? { $or: queryConditions } : {};
+    let subIdsToUpdate = [];
+
+    const parseSubList = (val) => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val.map(x => String(x).trim()).filter(Boolean);
+      if (typeof val === 'string') return val.split(/[\s,]+/).map(x => x.trim()).filter(Boolean);
+      return [];
+    };
+
+    // 1. Check sub-restaurants passed in request body
+    const bodySubs = [
+      ...parseSubList(subrestaurentsId),
+      ...parseSubList(subrestaurantsId),
+      ...parseSubList(subrestaurents_id),
+    ];
+    bodySubs.forEach(id => { if (id && !subIdsToUpdate.includes(id)) subIdsToUpdate.push(id); });
+
+    // 2. Fetch primary user from DB to check stored subrestaurentsId
+    try {
+      const dbUser = await RestaurantUser.findOne(primaryFilter);
+      if (dbUser) {
+        const dbSubs = [
+          ...parseSubList(dbUser.subrestaurentsId),
+          ...parseSubList(dbUser.subrestaurantsId),
+          ...parseSubList(dbUser.subrestaurents_id),
+        ];
+        dbSubs.forEach(id => { if (id && !subIdsToUpdate.includes(id)) subIdsToUpdate.push(id); });
+
+        // 3. If primaryUser restId is itself a sub-restaurant of a parent account, find parent's sub-restaurants
+        const uRestId = String(dbUser.restId || dbUser.restaurantId || '').trim();
+        if (uRestId) {
+          const parentUser = await RestaurantUser.findOne({
+            $or: [
+              { subrestaurentsId: uRestId },
+              { subrestaurantsId: uRestId },
+              { subrestaurents_id: uRestId },
+              { subrestaurentsId: Number(uRestId) || -99999 },
+              { subrestaurantsId: Number(uRestId) || -99999 },
+              { subrestaurents_id: Number(uRestId) || -99999 },
+            ]
+          });
+          if (parentUser) {
+            const pSubs = [
+              ...parseSubList(parentUser.subrestaurentsId),
+              ...parseSubList(parentUser.subrestaurantsId),
+              ...parseSubList(parentUser.subrestaurents_id),
+            ];
+            pSubs.forEach(id => { if (id && !subIdsToUpdate.includes(id)) subIdsToUpdate.push(id); });
+            const pRestId = String(parentUser.restId || parentUser.restaurantId || '').trim();
+            if (pRestId && !subIdsToUpdate.includes(pRestId)) subIdsToUpdate.push(pRestId);
+          }
+        }
+      }
+    } catch (dbFindErr) {
+      console.warn('Notice querying subrestaurentsId during fcmToken save:', dbFindErr.message);
+    }
+
+    // Add query conditions for all linked sub-restaurant IDs
+    subIdsToUpdate.forEach((sId) => {
+      queryConditions.push({ restId: sId });
+      queryConditions.push({ restId: String(sId) });
+      queryConditions.push({ restaurantId: sId });
+      queryConditions.push({ restaurantId: String(sId) });
+      queryConditions.push({ restaurant_id: sId });
+      const sNum = !isNaN(sId) ? Number(sId) : null;
+      if (sNum !== null) {
+        queryConditions.push({ restId: sNum });
+        queryConditions.push({ restaurantId: sNum });
+      }
+    });
+
     const filter = queryConditions.length > 0 ? { $or: queryConditions } : {};
 
     const result = await RestaurantUser.updateMany(filter, { $set: { fcmToken } });
@@ -1698,7 +1771,7 @@ app.post('/api/restaurant/fcm-token', async (req, res) => {
     const totalMatched = Math.max(result?.matchedCount || 0, rawResult?.matchedCount || 0);
     const totalModified = Math.max(result?.modifiedCount || 0, rawResult?.modifiedCount || 0);
 
-    console.log(`Updated FCM token in restuarentusers collection for targetRestId "${targetRestId}": (${totalMatched} matched, ${totalModified} modified)`);
+    console.log(`Updated FCM token in restuarentusers collection for targetRestId "${targetRestId}" (linked sub-restaurants: ${subIdsToUpdate.join(', ') || 'none'}): (${totalMatched} matched, ${totalModified} modified)`);
 
     res.json({
       success: true,
@@ -1717,7 +1790,7 @@ app.post('/api/restaurant/fcm-token', async (req, res) => {
 async function sendFCMOrderNotification(targetRestId, orderData) {
   try {
     const numId = targetRestId && !isNaN(targetRestId) ? Number(targetRestId) : null;
-    const userDoc = await RestaurantUser.findOne({
+    let userDoc = await RestaurantUser.findOne({
       $or: [
         { restId: String(targetRestId) },
         { restaurantId: String(targetRestId) },
@@ -1729,6 +1802,30 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
         ...(numId !== null ? [{ restId: numId }, { restaurantId: numId }] : []),
       ],
     });
+
+    // If sub-restaurant document does not have an fcmToken or is missing, check parent restaurant account
+    if (!userDoc || !String(userDoc.fcmToken || '').trim()) {
+      const parentDoc = await RestaurantUser.findOne({
+        $or: [
+          { subrestaurentsId: String(targetRestId) },
+          { subrestaurantsId: String(targetRestId) },
+          { subrestaurents_id: String(targetRestId) },
+          ...(numId !== null ? [
+            { subrestaurentsId: numId },
+            { subrestaurantsId: numId },
+            { subrestaurents_id: numId }
+          ] : [])
+        ]
+      });
+      if (parentDoc && String(parentDoc.fcmToken || '').trim()) {
+        console.log(`Found FCM token from parent restaurant (${parentDoc.restId}) for sub-restaurant "${targetRestId}"`);
+        if (!userDoc) {
+          userDoc = parentDoc;
+        } else {
+          userDoc.fcmToken = parentDoc.fcmToken;
+        }
+      }
+    }
 
     // 1. Skip notifications if restaurant partner switched toggle to OFFLINE / CLOSED (isActive === false)
     const rawActive = userDoc ? (userDoc.isActive !== undefined ? userDoc.isActive : userDoc.isOnline) : undefined;
@@ -1751,7 +1848,7 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
     const orderId = orderData.orderId || orderData._id || 'NEW';
     const amount = orderData.grandTotal || orderData.totalPrice || orderData.amount || '0';
 
-    console.log(`Targeting FCM notification for Order #${orderId} (₹${amount}) strictly to restaurantId "${targetRestId}", Found Token: "${fcmToken ? 'YES' : 'NONE'}"`);
+    console.log(`Targeting FCM notification for Order #${orderId} (${amount}) strictly to restaurantId "${targetRestId}", Found Token: "${fcmToken ? 'YES' : 'NONE'}"`);
 
     if (!firebaseAdmin) {
       console.warn(`[FCM Dispatch] firebaseAdmin SDK is NOT initialized. Cannot send push notification for Order #${orderId}. Check firebase-service-account.json or credentials.`);
@@ -1761,8 +1858,8 @@ async function sendFCMOrderNotification(targetRestId, orderData) {
       const message = {
         token: fcmToken,
         data: {
-          title: '🔔 NEW ORDER RECEIVED!',
-          body: `Order #${orderId} - Total Amount: ₹${amount}`,
+          title: 'NEW ORDER RECEIVED!',
+          body: `Order #${orderId} - Total Amount: ${amount}`,
           orderId: String(orderId),
           totalPrice: String(amount),
           grandTotal: String(amount),
