@@ -13,6 +13,17 @@ const RestaurantUserSchema = new mongoose.Schema(
     fssai: { type: String, default: '' },
     openTime: { type: String, default: '' },
     closeTime: { type: String, default: '' },
+    openTime2: { type: String, default: '' },
+    closeTime2: { type: String, default: '' },
+    timings: {
+      type: [
+        {
+          openTime: { type: String, default: '' },
+          closeTime: { type: String, default: '' },
+        },
+      ],
+      default: [],
+    },
     restaurantLocation: { type: mongoose.Schema.Types.Mixed, default: '' },
     commission: { type: mongoose.Schema.Types.Mixed, default: 0 },
     isActive: { type: Boolean, default: true },
@@ -23,7 +34,6 @@ const RestaurantUserSchema = new mongoose.Schema(
     collection: 'restuarentusers', // Explicitly targeting restuarentusers collection
   }
 );
-
 
 // Fast MongoDB lookup indexing (<10ms)
 RestaurantUserSchema.index({ restaurantId: 1, restId: 1, createdAt: -1 });

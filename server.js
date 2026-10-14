@@ -1091,6 +1091,11 @@ const handleLogin = async (req, res) => {
       fssai: user.fssai || '',
       openTime: user.openTime || '',
       closeTime: user.closeTime || '',
+      openTime2: user.openTime2 || '',
+      closeTime2: user.closeTime2 || '',
+      timings: Array.isArray(user.timings) && user.timings.length > 0
+        ? user.timings
+        : (user.openTime ? [{ openTime: user.openTime, closeTime: user.closeTime || '' }, ...(user.openTime2 ? [{ openTime: user.openTime2, closeTime: user.closeTime2 || '' }] : [])] : []),
       restaurantLocation: user.restaurantLocation || '',
       commission: extractedCommission,
       commissionRate: extractedCommission,
@@ -1205,38 +1210,84 @@ const handleRegister = async (req, res) => {
 // UPDATE Timings Endpoint for restaurant profile in restuarentusers collection
 app.put(['/api/restaurant/timings', '/api/users/update-timings', '/api/restaurant/update-timings'], async (req, res) => {
   try {
-    const { userId, restId, phone, openTime, closeTime } = req.body;
+    const { userId, restId, phone, openTime, closeTime, openTime2, closeTime2, timings } = req.body;
     console.log('Update timings request:', req.body);
 
     let query = {};
     if (userId) {
       query._id = userId;
     } else if (restId) {
-      query = { $or: [{ restId }, { restaurantId: restId }, { restaurant_id: restId }] };
+      query = { $or: [{ restId: String(restId) }, { restaurantId: String(restId) }, { restaurant_id: String(restId) }] };
     } else if (phone) {
-      query = { $or: [{ phone }, { mobileNumber: phone }] };
+      query = { $or: [{ phone: String(phone) }, { mobileNumber: String(phone) }] };
     } else {
       query = {};
     }
 
+    // Build standardized timings array and slot fields
+    let normalizedTimings = [];
+    if (Array.isArray(timings) && timings.length > 0) {
+      normalizedTimings = timings
+        .filter((t) => t && (t.openTime || t.closeTime))
+        .map((t) => ({
+          openTime: String(t.openTime || '').trim(),
+          closeTime: String(t.closeTime || '').trim(),
+        }));
+    }
+
+    const slot1Open = (normalizedTimings[0]?.openTime !== undefined ? normalizedTimings[0].openTime : openTime) || '';
+    const slot1Close = (normalizedTimings[0]?.closeTime !== undefined ? normalizedTimings[0].closeTime : closeTime) || '';
+    const slot2Open = (normalizedTimings[1]?.openTime !== undefined ? normalizedTimings[1].openTime : openTime2) || '';
+    const slot2Close = (normalizedTimings[1]?.closeTime !== undefined ? normalizedTimings[1].closeTime : closeTime2) || '';
+
+    if (normalizedTimings.length === 0) {
+      if (slot1Open || slot1Close) {
+        normalizedTimings.push({ openTime: slot1Open, closeTime: slot1Close });
+      }
+      if (slot2Open || slot2Close) {
+        normalizedTimings.push({ openTime: slot2Open, closeTime: slot2Close });
+      }
+    }
+
+    const updateFields = {
+      openTime: slot1Open,
+      closeTime: slot1Close,
+      openTime2: slot2Open,
+      closeTime2: slot2Close,
+      timings: normalizedTimings,
+    };
+
     let updatedUser = await RestaurantUser.findOneAndUpdate(
       query,
-      { $set: { openTime: openTime || '', closeTime: closeTime || '' } },
+      { $set: updateFields },
       { new: true }
     );
+
+    // Also sync raw collection
+    const db = mongoose.connection.db;
+    if (db) {
+      try {
+        await db.collection('restuarentusers').updateMany(query, { $set: updateFields });
+      } catch (rawErr) {
+        console.warn('Raw MongoDB timings update notice:', rawErr.message);
+      }
+    }
 
     if (!updatedUser) {
       console.warn('[Timings Update] No matching restaurant user found.');
       return res.status(404).json({ success: false, error: 'Restaurant user not found' });
     }
 
-    console.log(`Timings updated to: openTime="${openTime}", closeTime="${closeTime}"`);
+    console.log(`Timings updated for ${updatedUser.name || updatedUser.phone}: Slot 1 (${slot1Open} - ${slot1Close}), Slot 2 (${slot2Open} - ${slot2Close}), total: ${normalizedTimings.length}`);
 
     res.json({
       success: true,
       message: 'Timings updated successfully',
-      openTime: openTime || '',
-      closeTime: closeTime || '',
+      openTime: slot1Open,
+      closeTime: slot1Close,
+      openTime2: slot2Open,
+      closeTime2: slot2Close,
+      timings: normalizedTimings,
       user: updatedUser,
     });
   } catch (err) {
