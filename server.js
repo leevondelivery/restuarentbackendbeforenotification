@@ -1011,34 +1011,62 @@ app.get(['/api/auth/users', '/api/users'], async (req, res) => {
 // Login Handler Function
 const handleLogin = async (req, res) => {
   try {
-    const { mobileNumber, phone, password } = req.body;
-    const inputPhone = String(mobileNumber || phone || '').trim();
+    const {
+      mobileNumber,
+      phone,
+      password,
+      restaurantId,
+      restId,
+      restaurant_id,
+      id,
+      username,
+      email,
+    } = req.body;
+    const inputIdentifier = String(
+      restaurantId ||
+        restId ||
+        restaurant_id ||
+        mobileNumber ||
+        phone ||
+        username ||
+        email ||
+        id ||
+        ''
+    ).trim();
     const inputPassword = String(password || '').trim();
 
-    if (!inputPhone || !inputPassword) {
+    if (!inputIdentifier || !inputPassword) {
       return res.status(400).json({
         success: false,
-        message: 'Mobile number and password are required',
+        message: 'Restaurant ID / Mobile number and password are required',
       });
     }
 
-    console.log(`Login attempt for phone/mobile: "${inputPhone}"`);
+    console.log(`Login attempt for identifier: "${inputIdentifier}"`);
 
-    // Search in restuarentusers collection by phone, mobileNumber, or email
+    const numIdentifier = !isNaN(inputIdentifier) && inputIdentifier !== '' ? Number(inputIdentifier) : -1;
+
+    // Search in restuarentusers collection by restId, restaurantId, phone, mobileNumber, or email
     const user = await RestaurantUser.findOne({
       $or: [
-        { phone: inputPhone },
-        { mobileNumber: inputPhone },
-        { email: inputPhone },
-        { email: inputPhone.toLowerCase() },
-        { name: inputPhone },
-        { phone: Number(inputPhone) || -1 },
-        { mobileNumber: Number(inputPhone) || -1 },
+        { restId: inputIdentifier },
+        { restId: numIdentifier },
+        { restaurantId: inputIdentifier },
+        { restaurantId: numIdentifier },
+        { restaurant_id: inputIdentifier },
+        { restaurant_id: numIdentifier },
+        { phone: inputIdentifier },
+        { mobileNumber: inputIdentifier },
+        { email: inputIdentifier },
+        { email: inputIdentifier.toLowerCase() },
+        { name: inputIdentifier },
+        { phone: numIdentifier },
+        { mobileNumber: numIdentifier },
       ],
     });
 
     if (!user) {
-      console.log(`User not found for: "${inputPhone}"`);
+      console.log(`User not found for: "${inputIdentifier}"`);
       return res.status(400).json({
         success: false,
         message: 'Email and password is incorrect',
@@ -1056,7 +1084,7 @@ const handleLogin = async (req, res) => {
     }
 
     if (!isPasswordValid) {
-      console.log(`Invalid password for user: "${inputPhone}"`);
+      console.log(`Invalid password for user: "${inputIdentifier}"`);
       return res.status(401).json({
         success: false,
         message: 'Email and password is incorrect',
@@ -1065,7 +1093,7 @@ const handleLogin = async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { id: user._id, phone: user.phone || user.mobileNumber },
+      { id: user._id, phone: user.phone || user.mobileNumber, restId: user.restId || user.restaurantId },
       process.env.JWT_SECRET || 'secret_key',
       { expiresIn: '30d' }
     );
@@ -1084,8 +1112,10 @@ const handleLogin = async (req, res) => {
       _id: user._id,
       name: user.name || '',
       email: user.email || '',
-      phone: user.phone || user.mobileNumber || inputPhone,
-      restId: user.restId || '',
+      phone: user.phone || user.mobileNumber || inputIdentifier,
+      restId: user.restId || user.restaurantId || '',
+      restaurantId: user.restId || user.restaurantId || '',
+      restaurant_id: user.restId || user.restaurantId || '',
       restLocation: user.restLocation || '',
       address: user.address || '',
       fssai: user.fssai || '',
@@ -1107,13 +1137,13 @@ const handleLogin = async (req, res) => {
       try {
         user.fcmToken = req.body.fcmToken;
         await user.save();
-        console.log(`Saved FCM token during login for user "${user.name || inputPhone}"`);
+        console.log(`Saved FCM token during login for user "${user.name || inputIdentifier}"`);
       } catch (fcmErr) {
         console.warn('Notice saving FCM token during login:', fcmErr.message);
       }
     }
 
-    console.log(`Login SUCCESS for: "${inputPhone}" (${user.name})`);
+    console.log(`Login SUCCESS for: "${inputIdentifier}" (${user.name})`);
 
     return res.status(200).json({
       success: true,
@@ -1343,11 +1373,52 @@ app.put(['/api/restaurant/status', '/api/restaurant/toggle-status', '/api/users/
 // GET Menu Items Endpoint from all collections in restuarents DB by restaurantId
 app.get(['/api/menu', '/api/menu/items'], async (req, res) => {
   try {
-    const { restId, restaurantId, restaurant_id, name, phone, userId } = req.query;
+    const { restId, restaurantId, restaurant_id, name, phone, userId, id } = req.query;
     console.log('Fetch menu request query:', req.query);
 
-    const targetRestId = String(restaurantId || restId || restaurant_id || userId || '').trim();
+    let targetRestId = String(restaurantId || restId || restaurant_id || id || userId || '').trim();
+    if (targetRestId.toLowerCase() === 'undefined' || targetRestId.toLowerCase() === 'null') {
+      targetRestId = '';
+    }
+
+    // If targetRestId is a MongoDB ObjectId, resolve to the restaurant's actual restId from restuarentusers
+    if (targetRestId && mongoose.Types.ObjectId.isValid(targetRestId)) {
+      try {
+        const u = await RestaurantUser.findById(targetRestId);
+        if (u && (u.restId || u.restaurantId)) {
+          targetRestId = String(u.restId || u.restaurantId).trim();
+        }
+      } catch (err) {
+        console.warn('Error resolving ObjectId to restId:', err.message);
+      }
+    }
+
+    // If targetRestId was not passed directly, try to resolve via phone or mobileNumber if provided
+    if (!targetRestId && (phone || req.query.mobileNumber)) {
+      try {
+        const inputP = String(phone || req.query.mobileNumber || '').trim();
+        const u = await RestaurantUser.findOne({
+          $or: [
+            { phone: inputP },
+            { mobileNumber: inputP },
+            { email: inputP },
+            { name: inputP },
+          ],
+        });
+        if (u && (u.restId || u.restaurantId)) {
+          targetRestId = String(u.restId || u.restaurantId).trim();
+        }
+      } catch (err) {
+        console.warn('Error resolving phone to restId:', err.message);
+      }
+    }
+
     const targetName = String(name || '').trim().toLowerCase();
+
+    // Guard: Prevent returning all restaurants' items if neither restaurantId nor restaurant name was specified
+    if (!targetRestId && !targetName) {
+      return res.json({ success: true, count: 0, items: [] });
+    }
 
     const db = mongoose.connection.client.db('restuarents');
     const collections = await db.listCollections().toArray();
@@ -1356,13 +1427,17 @@ app.get(['/api/menu', '/api/menu/items'], async (req, res) => {
     console.log(`Searching menu items across ${collectionNames.length} collections in restuarents DB for restaurantId: "${targetRestId}", name: "${targetName}"`);
 
     let allMatchedItems = [];
+    const numId = !isNaN(targetRestId) && targetRestId !== '' ? Number(targetRestId) : -999999;
 
     for (const colName of collectionNames) {
       let queryOr = [];
       if (targetRestId) {
         queryOr.push({ restaurantId: targetRestId });
+        queryOr.push({ restaurantId: numId });
         queryOr.push({ restId: targetRestId });
+        queryOr.push({ restId: numId });
         queryOr.push({ restaurant_id: targetRestId });
+        queryOr.push({ restaurant_id: numId });
         queryOr.push({ 'restaurant.id': targetRestId });
         queryOr.push({ 'restaurant.restId': targetRestId });
       }
@@ -1371,16 +1446,23 @@ app.get(['/api/menu', '/api/menu/items'], async (req, res) => {
 
       let docs = await db.collection(colName).find(colQuery).toArray();
 
-      // If no docs matched by restaurantId in this collection, but collection name equals targetRestId / targetName
-      if (docs.length === 0 && targetRestId && (colName.toLowerCase() === targetRestId.toLowerCase() || colName.toLowerCase().includes(targetRestId.toLowerCase()))) {
+      // If no docs matched by restaurantId in this collection, check if collection name equals targetRestId exactly (e.g. collection "9", "26", "34", "35", "36", "38")
+      if (docs.length === 0 && targetRestId && colName.toLowerCase() === targetRestId.toLowerCase()) {
         docs = await db.collection(colName).find({}).toArray();
       }
 
-      if (docs.length === 0 && targetName && colName.toLowerCase().includes(targetName)) {
+      // If searching by restaurant name and collection name matches targetName (at least 3 characters)
+      if (docs.length === 0 && targetName && targetName.length >= 3 && colName.toLowerCase().includes(targetName)) {
         docs = await db.collection(colName).find({}).toArray();
       }
 
       for (const doc of docs) {
+        // Strict isolation: verify that doc does not belong to another restaurant!
+        const docRestId = String(doc.restaurantId || doc.restId || doc.restaurant_id || '').trim();
+        if (targetRestId && docRestId && docRestId !== targetRestId) {
+          continue; // Prevent cross-restaurant menu pollution
+        }
+
         // Filter by itemtodisplayintherestuarentapp: if false or "false", do not display in restaurant app
         const displayVal = doc.itemtodisplayintherestuarentapp;
         if (displayVal !== undefined && displayVal !== null) {
@@ -1410,65 +1492,17 @@ app.get(['/api/menu', '/api/menu/items'], async (req, res) => {
           _id: doc._id.toString(),
           name: doc.name || doc.itemName || doc.title || 'Item',
           price: doc.price || doc.itemPrice || doc.cost || 0,
-        isFreeItem: doc.isFreeItem === true || doc.isFreeItem === 'true' || String(doc.isFreeItem).toLowerCase() === 'true' || Number(doc.price || doc.itemPrice || doc.cost || 0) === 0,
+          isFreeItem: doc.isFreeItem === true || doc.isFreeItem === 'true' || String(doc.isFreeItem).toLowerCase() === 'true' || Number(doc.price || doc.itemPrice || doc.cost || 0) === 0,
           itemStatus: statusVal,
           itemtodisplayintherestuarentapp: displayVal,
           category: doc.category || '',
-          restaurantId: doc.restaurantId || doc.restId || targetRestId,
+          restaurantId: docRestId || targetRestId,
           collectionName: colName,
         });
       }
     }
 
-    // Fallback: if still no items matched by specific query, search all docs across all collections
-    if (allMatchedItems.length === 0 && collectionNames.length > 0) {
-      for (const colName of collectionNames) {
-        const docs = await db.collection(colName).find({}).toArray();
-        for (const doc of docs) {
-          // Filter by itemtodisplayintherestuarentapp: if false or "false", do not display in restaurant app
-          const displayVal = doc.itemtodisplayintherestuarentapp;
-          if (displayVal !== undefined && displayVal !== null) {
-            let isDisplay = false;
-            if (typeof displayVal === 'boolean') {
-              isDisplay = displayVal;
-            } else if (typeof displayVal === 'string') {
-              isDisplay = displayVal.trim().toLowerCase() === 'true';
-            } else {
-              isDisplay = Boolean(displayVal);
-            }
-            if (!isDisplay) {
-              continue; // Skip items set to false
-            }
-          }
-
-          const docRestId = String(doc.restaurantId || doc.restId || doc.restaurant_id || '').trim();
-          if (!targetRestId || docRestId === targetRestId || docRestId.toLowerCase().includes(targetRestId.toLowerCase())) {
-            let statusVal = doc.itemStatus;
-            if (statusVal === undefined || statusVal === null) {
-              statusVal = true;
-            } else if (typeof statusVal === 'string') {
-              statusVal = statusVal.toLowerCase() === 'true';
-            } else {
-              statusVal = Boolean(statusVal);
-            }
-
-            allMatchedItems.push({
-              _id: doc._id.toString(),
-              name: doc.name || doc.itemName || doc.title || 'Item',
-              price: doc.price || doc.itemPrice || doc.cost || 0,
-        isFreeItem: doc.isFreeItem === true || doc.isFreeItem === 'true' || String(doc.isFreeItem).toLowerCase() === 'true' || Number(doc.price || doc.itemPrice || doc.cost || 0) === 0,
-              itemStatus: statusVal,
-              itemtodisplayintherestuarentapp: displayVal,
-              category: doc.category || '',
-              restaurantId: docRestId || targetRestId,
-              collectionName: colName,
-            });
-          }
-        }
-      }
-    }
-
-    console.log(`Total matched menu items found across restuarents DB: ${allMatchedItems.length}`);
+    console.log(`Total matched menu items found across restuarents DB for restaurant "${targetRestId}": ${allMatchedItems.length}`);
 
     res.json({
       success: true,
